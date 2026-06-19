@@ -1,8 +1,8 @@
-import { getDb } from '@/lib/db';
+import { openDb } from '@/lib/db';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const db = await getDb();
+  const db = await openDb();
   const isPostgres = !!process.env.POSTGRES_URL;
   
   const idType = isPostgres ? 'SERIAL' : 'INTEGER';
