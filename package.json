@@ -1,0 +1,23 @@
+{
+  "name": "meal-tracker-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "init-db": "node src/scripts/initDb.js",
+    "seed-data": "node src/scripts/seedData.js"
+  },
+  "dependencies": {
+    "@vercel/postgres": "^0.10.0",
+    "lucide-react": "^1.21.0",
+    "next": "14.2.3",
+    "react": "^18",
+    "react-dom": "^18",
+    "recharts": "^2.12.7",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
+  }
+}
