@@ -40,20 +40,23 @@ export async function openDb() {
 
     const db = {
       all: async (query, ...params) => {
-        const { rows } = await sql.query(translateQuery(query), params);
+        const p = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
+        const { rows } = await sql.query(translateQuery(query), p);
         return rows;
       },
       get: async (query, ...params) => {
-        const { rows } = await sql.query(translateQuery(query), params);
+        const p = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
+        const { rows } = await sql.query(translateQuery(query), p);
         return rows[0] || null;
       },
       run: async (query, ...params) => {
+        const p = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
         let isInsert = query.trim().toUpperCase().startsWith('INSERT');
         let pgQuery = translateQuery(query);
         if (isInsert && !pgQuery.toUpperCase().includes('RETURNING')) {
           pgQuery += ' RETURNING id';
         }
-        const { rows } = await sql.query(pgQuery, params);
+        const { rows } = await sql.query(pgQuery, p);
         return { lastID: rows[0]?.id };
       }
     };
