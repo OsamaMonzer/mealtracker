@@ -108,10 +108,17 @@ export default function IngredientsPage() {
                 <option>Raw</option><option>Cooked</option>
               </select>
             </div>
-            {['calories_100g', 'protein_100g', 'carbs_100g', 'fat_100g'].map(key => (
+            {['calories_100g', 'protein_100g'].map(key => (
               <div key={key} className="form-group">
                 <label>{key.replace('_100g', '').replace('_', ' ')} / 100g</label>
                 <input required type="number" step="any" className="form-input" value={form[key]}
+                  onChange={e => setForm({ ...form, [key]: e.target.value })} />
+              </div>
+            ))}
+            {['carbs_100g', 'fat_100g'].map(key => (
+              <div key={key} className="form-group">
+                <label>{key.replace('_100g', '').replace('_', ' ')} / 100g <span style={{color:'var(--text-dim)',fontWeight:400}}>(opt)</span></label>
+                <input type="number" step="any" className="form-input" value={form[key]}
                   onChange={e => setForm({ ...form, [key]: e.target.value })} />
               </div>
             ))}

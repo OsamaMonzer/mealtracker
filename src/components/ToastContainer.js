@@ -27,7 +27,7 @@ export default function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
-    <div style={{ position: 'fixed', bottom: '2rem', left: '2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', zIndex: 1000, pointerEvents: 'none' }}>
+    <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', zIndex: 1000, pointerEvents: 'none' }}>
       {toasts.map(t => (
         <div key={t.id} className="animate-fade-up" style={{
           background: t.type === 'error' ? 'var(--red-light)' : 'var(--surface)',
