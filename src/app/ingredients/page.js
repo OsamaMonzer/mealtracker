@@ -22,12 +22,38 @@ export default function IngredientsPage() {
   const [editId, setEditId]     = useState(null);
   const [search, setSearch]     = useState('');
   const [filterCat, setFilterCat] = useState('All');
+  const [error, setError]       = useState('');
+  const [seeding, setSeeding]   = useState(false);
 
   useEffect(() => { fetchIngredients(); }, []);
 
   async function fetchIngredients() {
-    try { setIngredients(await (await fetch('/api/ingredients')).json()); }
-    catch(e) { console.error(e); } finally { setLoading(false); }
+    try {
+      setError('');
+      const res = await fetch('/api/ingredients');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not load ingredients');
+      if (!Array.isArray(data)) throw new Error('Ingredients API did not return a list');
+      setIngredients(data);
+    }
+    catch(e) { console.error(e); setError(e.message); setIngredients([]); } finally { setLoading(false); }
+  }
+
+  async function seedIngredients() {
+    try {
+      setSeeding(true);
+      setError('');
+      const res = await fetch('/api/seed');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not load starter ingredients');
+      showToast(`Starter ingredients loaded (${data.added} added)`);
+      await fetchIngredients();
+    } catch (e) {
+      console.error(e);
+      setError(e.message);
+    } finally {
+      setSeeding(false);
+    }
   }
 
   function openAdd()    { setEditId(null); setForm(blank); setShowForm(true); }
@@ -161,10 +187,22 @@ export default function IngredientsPage() {
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         {loading ? (
           <p style={{ color: 'var(--text-dim)', padding: '3rem', textAlign: 'center' }}>Loading ingredients...</p>
+        ) : error ? (
+          <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-dim)' }}>
+            <Carrot size={36} strokeWidth={1.5} style={{ marginBottom: '0.75rem', opacity: 0.5 }} />
+            <p style={{ marginBottom: '1rem' }}>Could not load ingredients.</p>
+            <p style={{ maxWidth: '32rem', margin: '0 auto 1.25rem', fontSize: '0.85rem' }}>{error}</p>
+            <button className="btn btn-primary" onClick={fetchIngredients}>Try Again</button>
+          </div>
         ) : visible.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-dim)' }}>
             <Carrot size={36} strokeWidth={1.5} style={{ marginBottom: '0.75rem', opacity: 0.5 }} />
-            <p>No ingredients found.</p>
+            <p style={{ marginBottom: '1rem' }}>No ingredients found.</p>
+            {!search && filterCat === 'All' && (
+              <button className="btn btn-primary" onClick={seedIngredients} disabled={seeding}>
+                {seeding ? 'Loading...' : 'Load Starter Ingredients'}
+              </button>
+            )}
           </div>
         ) : (
           <table className="data-table" style={{ margin: 0 }}>

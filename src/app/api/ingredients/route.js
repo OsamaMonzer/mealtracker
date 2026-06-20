@@ -3,6 +3,16 @@ import { openDb } from '../../../lib/db';
 
 export const dynamic = 'force-dynamic';
 
+function numberOrZero(value) {
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function optionalNumber(value) {
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export async function GET() {
   try {
     const db = await openDb();
@@ -18,7 +28,9 @@ export async function POST(request) {
     const data = await request.json();
     const { name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes } = data;
     
-    if (!name || isNaN(calories_100g) || isNaN(protein_100g) || isNaN(carbs_100g) || isNaN(fat_100g)) {
+    const calories = parseFloat(calories_100g);
+    const protein = parseFloat(protein_100g);
+    if (!name || !Number.isFinite(calories) || !Number.isFinite(protein)) {
         return NextResponse.json({ error: 'Missing required numeric fields or name' }, { status: 400 });
     }
 
@@ -27,7 +39,7 @@ export async function POST(request) {
       INSERT INTO ingredients 
       (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, category || '', brand || '', status || '', parseFloat(calories_100g), parseFloat(protein_100g), parseFloat(carbs_100g), parseFloat(fat_100g), price_kg ? parseFloat(price_kg) : null, notes || '']
+      [name, category || '', brand || '', status || '', calories, protein, numberOrZero(carbs_100g), numberOrZero(fat_100g), optionalNumber(price_kg), notes || '']
     );
     
     return NextResponse.json({ id: result.lastID, ...data }, { status: 201 });
