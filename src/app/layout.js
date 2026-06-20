@@ -4,6 +4,7 @@ import ToastContainer from '../components/ToastContainer';
 export const metadata = {
   title: "Osama's Kitchen",
   description: 'Personal Nutrition & Recipe System',
+  icons: { icon: '/favicon.svg' },
 };
 
 export default function RootLayout({ children }) {
