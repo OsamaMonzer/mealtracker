@@ -6,7 +6,7 @@ import { ArrowLeft, Plus, Pencil, Trash2, Search, SlidersHorizontal, Carrot, Che
 import { showToast } from '../../components/ToastContainer';
 
 const CATEGORIES = ['Protein', 'Carb', 'Fat', 'Vegetable', 'Fruit', 'Sauce', 'Dairy', 'Other'];
-const blank = { name: '', category: 'Protein', brand: '', status: 'Raw', calories_100g: '', protein_100g: '', carbs_100g: '', fat_100g: '', price_kg: '', notes: '' };
+const blank = { name: '', category: 'Protein', brand: '', status: 'Raw', serving_g: '100', calories_100g: '', protein_100g: '', carbs_100g: '', fat_100g: '', price_kg: '', notes: '' };
 
 const CAT_CLASS = {
   Protein: 'badge-blue', Carb: 'badge-gold', Fat: 'badge-red',
@@ -61,15 +61,32 @@ export default function IngredientsPage() {
     setEditId(i.id);
     setForm({ name: i.name, category: i.category, brand: i.brand || '', status: i.status,
       calories_100g: i.calories_100g, protein_100g: i.protein_100g, carbs_100g: i.carbs_100g, fat_100g: i.fat_100g,
-      price_kg: i.price_kg || '', notes: i.notes || '' });
+      serving_g: '100', price_kg: i.price_kg || '', notes: i.notes || '' });
     setShowForm(true);
+  }
+
+  function nutritionPayload() {
+    const serving = parseFloat(form.serving_g) || 100;
+    const multiplier = 100 / serving;
+    const convert = value => {
+      const parsed = parseFloat(value);
+      return Number.isFinite(parsed) ? +(parsed * multiplier).toFixed(2) : '';
+    };
+
+    return {
+      ...form,
+      calories_100g: convert(form.calories_100g),
+      protein_100g: convert(form.protein_100g),
+      carbs_100g: convert(form.carbs_100g),
+      fat_100g: convert(form.fat_100g),
+    };
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
     const url = editId ? `/api/ingredients/${editId}` : '/api/ingredients';
     const method = editId ? 'PUT' : 'POST';
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(nutritionPayload()) });
     if (res.ok) { 
       setShowForm(false); 
       setForm(blank); 
@@ -134,20 +151,28 @@ export default function IngredientsPage() {
                 <option>Raw</option><option>Cooked</option>
               </select>
             </div>
+            <div className="form-group">
+              <label>Nutrition label grams</label>
+              <input required min="1" type="number" step="any" className="form-input" value={form.serving_g}
+                onChange={e => setForm({ ...form, serving_g: e.target.value })} />
+            </div>
             {['calories_100g', 'protein_100g'].map(key => (
               <div key={key} className="form-group">
-                <label>{key.replace('_100g', '').replace('_', ' ')} / 100g</label>
+                <label>{key.replace('_100g', '').replace('_', ' ')} / label</label>
                 <input required type="number" step="any" className="form-input" value={form[key]}
                   onChange={e => setForm({ ...form, [key]: e.target.value })} />
               </div>
             ))}
             {['carbs_100g', 'fat_100g'].map(key => (
               <div key={key} className="form-group">
-                <label>{key.replace('_100g', '').replace('_', ' ')} / 100g <span style={{color:'var(--text-dim)',fontWeight:400}}>(opt)</span></label>
+                <label>{key.replace('_100g', '').replace('_', ' ')} / label <span style={{color:'var(--text-dim)',fontWeight:400}}>(opt)</span></label>
                 <input type="number" step="any" className="form-input" value={form[key]}
                   onChange={e => setForm({ ...form, [key]: e.target.value })} />
               </div>
             ))}
+            <div style={{ gridColumn: '1 / -1', fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: '-0.5rem' }}>
+              These values will be saved as nutrition per 100g.
+            </div>
             <div className="form-group">
               <label>Price / kg (opt)</label>
               <input type="number" step="any" className="form-input" value={form.price_kg}
@@ -223,11 +248,12 @@ export default function IngredientsPage() {
                 <tr key={ing.id} className="animate-fade-up">
                   {editId === ing.id ? (
                     <td colSpan="8" style={{ padding: '0' }}>
-                      <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 2fr) 1fr 60px 60px 60px 60px 70px 100px', gap: '0.5rem', padding: '0.75rem', background: 'var(--surface2)', alignItems: 'center' }}>
+                      <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 2fr) 1fr 64px 60px 60px 60px 60px 70px 100px', gap: '0.5rem', padding: '0.75rem', background: 'var(--surface2)', alignItems: 'center' }}>
                         <input required type="text" className="form-input" style={{ padding: '0.4rem 0.6rem' }} placeholder="Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
                         <select className="form-input" style={{ padding: '0.4rem 0.6rem' }} value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
                           {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                         </select>
+                        <input required min="1" title="Nutrition label grams" type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.serving_g} onChange={e => setForm({...form, serving_g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.calories_100g} onChange={e => setForm({...form, calories_100g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.protein_100g} onChange={e => setForm({...form, protein_100g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.carbs_100g} onChange={e => setForm({...form, carbs_100g: e.target.value})} />
