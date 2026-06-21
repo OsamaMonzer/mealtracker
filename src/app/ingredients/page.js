@@ -369,7 +369,6 @@ export default function IngredientsPage() {
               <tr>
                   <th style={{ paddingLeft: '1.75rem', textAlign: 'left' }}>Name</th>
                   <th style={{ textAlign: 'center' }}>Category</th>
-                  <th style={{ textAlign: 'center' }}>Serving</th>
                   <th style={{ textAlign: 'center' }}>Cal</th>
                   <th style={{ textAlign: 'center' }}>Protein</th>
                   <th style={{ textAlign: 'center' }}>Carbs</th>
@@ -383,12 +382,11 @@ export default function IngredientsPage() {
                 <tr key={ing.id} className="animate-fade-up">
                   {editId === ing.id ? (
                     <td colSpan="8" style={{ padding: '0' }}>
-                      <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 2fr) 1fr 64px 60px 60px 60px 60px 70px 100px', gap: '0.5rem', padding: '0.75rem', background: 'var(--surface2)', alignItems: 'center' }}>
+                      <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 2fr) 1fr 60px 60px 60px 60px 70px 100px', gap: '0.5rem', padding: '0.75rem', background: 'var(--surface2)', alignItems: 'center' }}>
                         <input required type="text" className="form-input" style={{ padding: '0.4rem 0.6rem' }} placeholder="Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
                         <select className="form-input" style={{ padding: '0.4rem 0.6rem' }} value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
                           {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                         </select>
-                        <input title="Serving (optional)" type="text" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.serving_g} onChange={e => setForm({...form, serving_g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.calories_100g} onChange={e => setForm({...form, calories_100g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.protein_100g} onChange={e => setForm({...form, protein_100g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.carbs_100g} onChange={e => setForm({...form, carbs_100g: e.target.value})} />
