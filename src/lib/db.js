@@ -86,6 +86,14 @@ export async function openDb() {
         const { rows } = await sql.query(pgQuery, p);
         return { lastID: rows[0]?.id };
       }
+      ,
+      exec: async (query, ...params) => {
+        const p = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
+        // translate ? placeholders to $1, $2... for postgres
+        const pgQuery = translateQuery(query);
+        await sql.query(pgQuery, p);
+        return;
+      }
     };
 
     await ensureTablesExist(db);
