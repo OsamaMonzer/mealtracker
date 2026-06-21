@@ -100,7 +100,7 @@ export async function POST(request) {
 
     const create = !!body.create;
     const p = await fetchOffProduct(barcode);
-    if (!p) return NextResponse.json({ error: 'product not found' }, { status: 404 });
+    if (!p) return NextResponse.json({ created: false, message: 'product not found' });
 
     const nutr = p.nutriments || {};
     const serv = parseServing(p.serving_size || '');
@@ -125,9 +125,15 @@ export async function POST(request) {
       notes: `Imported from OpenFoodFacts barcode ${barcode}`
     };
 
+    const db = await openDb();
+    // check for existing by normalized name to avoid duplicates
+    const localRows = await db.all('SELECT * FROM ingredients');
+    const norm = normalizeName(record.name);
+    const existing = localRows.find(r => normalizeName(r.name) === norm);
+    if (existing) return NextResponse.json({ created: false, message: 'already exists', local: existing });
+
     if (!create) return NextResponse.json({ created: false, preview: record });
 
-    const db = await openDb();
     const res = await db.run(`INSERT INTO ingredients (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [record.name, record.category, record.brand, record.status, record.calories_100g, record.protein_100g, record.carbs_100g, record.fat_100g, record.price_kg, record.notes, record.serving_label, record.serving_grams]);
     const id = res.lastID;
