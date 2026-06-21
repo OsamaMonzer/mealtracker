@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Pencil, Trash2, Search, SlidersHorizontal, Carrot, Check, X } from 'lucide-react';
 import { showToast } from '../../components/ToastContainer';
@@ -29,36 +29,50 @@ export default function IngredientsPage() {
   const [filterCat, setFilterCat] = useState('All');
   const [error, setError]       = useState('');
   const [seeding, setSeeding]   = useState(false);
+  const [newItems, setNewItems] = useState(0);
+  const lastSeenIdRef = useRef(null);
+  const lastCountRef = useRef(null);
+  const clearTimerRef = useRef(null);
 
   useEffect(() => { fetchIngredients(); }, []);
 
   // Poll latest ID to auto-refresh when ingredients are added externally (e.g., via barcode shortcut)
   useEffect(() => {
     let mounted = true;
-    let lastSeen = null;
     const check = async () => {
       try {
-        const res = await fetch('/api/ingredients/latest');
+        const res = await fetch('/api/ingredients/latest?ts=' + Date.now());
         const j = await res.json();
         if (!mounted) return;
         const latest = j.lastId || 0;
-        if (lastSeen === null) lastSeen = latest;
-        if (latest && latest !== lastSeen) {
-          lastSeen = latest;
+        const count = j.count || 0;
+        if (lastSeenIdRef.current === null) {
+          lastSeenIdRef.current = latest;
+          lastCountRef.current = count;
+          return;
+        }
+        if (latest && latest !== lastSeenIdRef.current) {
+          const diff = Math.max(0, (count || 0) - (lastCountRef.current || 0));
+          setNewItems(diff || 1);
+          lastSeenIdRef.current = latest;
+          lastCountRef.current = count;
+          // fetch new list
           await fetchIngredients();
+          // clear indicator after 5s
+          if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+          clearTimerRef.current = setTimeout(() => setNewItems(0), 5000);
         }
       } catch (e) { /* ignore polling errors */ }
     };
     const t = setInterval(check, 3000);
-    // run an initial check after mount
     check();
-    return () => { mounted = false; clearInterval(t); };
+    return () => { mounted = false; clearInterval(t); if (clearTimerRef.current) clearTimeout(clearTimerRef.current); };
   }, []);
 
   async function fetchIngredients() {
     try {
       setError('');
-      const res = await fetch('/api/ingredients');
+      const res = await fetch('/api/ingredients?ts=' + Date.now());
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not load ingredients');
       if (!Array.isArray(data)) throw new Error('Ingredients API did not return a list');
@@ -169,6 +183,14 @@ export default function IngredientsPage() {
           </button>
         </div>
       </div>
+      {newItems > 0 && (
+        <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--surface3)', padding: '0.5rem 1rem', borderRadius: '8px', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <div style={{ fontWeight: 700 }}>{newItems} new ingredient{newItems>1?'s':''} added</div>
+            <button className="btn" onClick={() => { setNewItems(0); }}>Dismiss</button>
+          </div>
+        </div>
+      )}
 
       {/* Add Form (Only for new items now) */}
       {showForm && !editId && (
