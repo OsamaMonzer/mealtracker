@@ -413,7 +413,7 @@ export default function IngredientsPage() {
                   ) : (
                     <>
                       <td style={{ paddingLeft: '1.75rem' }}>
-                        <div style={{ fontWeight: 600 }}>{ing.name}</div>
+                        <div style={{ fontWeight: 600, background: highlightedId === ing.id ? 'linear-gradient(90deg, rgba(255,251,230,0.9), rgba(255,255,255,0))' : 'transparent', padding: highlightedId === ing.id ? '0.15rem 0.35rem' : 0, borderRadius: '4px' }}>{ing.name}</div>
                         {ing.brand && <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '0.1rem' }}>{ing.brand}</div>}
                       </td>
                       <td><span className={`badge ${CAT_CLASS[ing.category] || 'badge-gray'}`}>{ing.category}</span></td>
