@@ -113,37 +113,17 @@ export default function IngredientsPage() {
   }
 
   function nutritionPayload() {
-    // determine grams for serving_g (supports text like "1 egg")
-    function parseServingToGrams(s) {
-      if (s == null) return 100;
-      const str = String(s).trim();
-      if (!str) return 100;
-      const gMatch = str.match(/^(\d+(?:\.\d+)?)\s*(g|gr|gram|grams)?$/i);
-      if (gMatch) return parseFloat(gMatch[1]);
-      const qtyMatch = str.match(/^(\d+(?:\.\d+)?)\s*(\w+)\b/i);
-      const mapping = { egg: 60, eggs: 60, slice: 30, slices: 30, tbsp: 15, tablespoon: 15, tsp: 5, teaspoon: 5, cup: 240 };
-      if (qtyMatch) {
-        const qty = parseFloat(qtyMatch[1]);
-        const unit = qtyMatch[2].toLowerCase();
-        if (mapping[unit]) return +(qty * mapping[unit]).toFixed(2);
-      }
-      const num = parseFloat(str);
-      return Number.isFinite(num) ? num : 100;
-    }
-
-    const serving = parseServingToGrams(form.serving_g) || 100;
-    const multiplier = 100 / serving;
-    const convert = value => {
-      const parsed = parseFloat(value);
-      return Number.isFinite(parsed) ? +(parsed * multiplier).toFixed(2) : '';
+    // Values are entered as per-100g directly now.
+    const toNumOrEmpty = v => {
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : '';
     };
-
     return {
       ...form,
-      calories_100g: convert(form.calories_100g),
-      protein_100g: convert(form.protein_100g),
-      carbs_100g: convert(form.carbs_100g),
-      fat_100g: convert(form.fat_100g),
+      calories_100g: toNumOrEmpty(form.calories_100g),
+      protein_100g: toNumOrEmpty(form.protein_100g),
+      carbs_100g: toNumOrEmpty(form.carbs_100g),
+      fat_100g: toNumOrEmpty(form.fat_100g),
     };
   }
 
@@ -175,6 +155,15 @@ export default function IngredientsPage() {
 
   return (
     <main>
+      {newItems > 0 && (
+        <div style={{ position: 'fixed', top: '1rem', right: '1rem', zIndex: 1200 }}>
+          <div style={{ background: 'var(--surface)', padding: '0.5rem 0.75rem', borderRadius: '999px', boxShadow: '0 6px 18px rgba(0,0,0,0.08)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div style={{ fontWeight: 700 }}>{newItems}</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>new</div>
+            <button className="btn btn-primary" onClick={() => { setSearch(''); setFilterCat('All'); if (lastSeenIdRef.current) setHighlightedId(lastSeenIdRef.current); setNewItems(0); }} style={{ marginLeft: '0.25rem' }}>Show New</button>
+          </div>
+        </div>
+      )}
       <div className="page-header" style={{ marginBottom: '2.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Link href="/" className="btn-icon"><ArrowLeft size={18} /></Link>
@@ -378,15 +367,15 @@ export default function IngredientsPage() {
           <table className="data-table" style={{ margin: 0 }}>
             <thead>
               <tr>
-                <th style={{ paddingLeft: '1.75rem' }}>Name</th>
-                <th>Category</th>
-                <th>Cal</th>
-                <th>Protein</th>
-                <th>Carbs</th>
-                <th>Fat</th>
-                <th>Status</th>
-                <th style={{ paddingRight: '1.75rem', textAlign: 'right' }}>Actions</th>
-              </tr>
+                  <th style={{ paddingLeft: '1.75rem', textAlign: 'left' }}>Name</th>
+                  <th style={{ textAlign: 'center' }}>Category</th>
+                  <th style={{ textAlign: 'center' }}>Cal</th>
+                  <th style={{ textAlign: 'center' }}>Protein</th>
+                  <th style={{ textAlign: 'center' }}>Carbs</th>
+                  <th style={{ textAlign: 'center' }}>Fat</th>
+                  <th style={{ textAlign: 'center' }}>Status</th>
+                  <th style={{ paddingRight: '1.75rem', textAlign: 'right' }}>Actions</th>
+                </tr>
             </thead>
             <tbody>
               {visible.map(ing => (
