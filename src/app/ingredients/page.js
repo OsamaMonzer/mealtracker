@@ -32,6 +32,29 @@ export default function IngredientsPage() {
 
   useEffect(() => { fetchIngredients(); }, []);
 
+  // Poll latest ID to auto-refresh when ingredients are added externally (e.g., via barcode shortcut)
+  useEffect(() => {
+    let mounted = true;
+    let lastSeen = null;
+    const check = async () => {
+      try {
+        const res = await fetch('/api/ingredients/latest');
+        const j = await res.json();
+        if (!mounted) return;
+        const latest = j.lastId || 0;
+        if (lastSeen === null) lastSeen = latest;
+        if (latest && latest !== lastSeen) {
+          lastSeen = latest;
+          await fetchIngredients();
+        }
+      } catch (e) { /* ignore polling errors */ }
+    };
+    const t = setInterval(check, 3000);
+    // run an initial check after mount
+    check();
+    return () => { mounted = false; clearInterval(t); };
+  }, []);
+
   async function fetchIngredients() {
     try {
       setError('');
