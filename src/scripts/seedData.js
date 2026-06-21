@@ -41,9 +41,9 @@ async function seed() {
       continue;
     }
     await db.run(`
-      INSERT INTO ingredients (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [item.name, item.category, item.brand, item.status, item.calories_100g, item.protein_100g, item.carbs_100g, item.fat_100g, item.price_kg, item.notes]
+      INSERT INTO ingredients (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [item.name, item.category, item.brand, item.status, item.calories_100g, item.protein_100g, item.carbs_100g, item.fat_100g, item.price_kg, item.notes, item.serving_label || null, item.serving_grams || null]
     );
     console.log(`  ✓ Added: ${item.name}`);
     added++;

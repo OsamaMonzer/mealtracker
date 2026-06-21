@@ -17,7 +17,7 @@ async function ensureTablesExist(db) {
     id ${idType} PRIMARY KEY ${autoInc}, name TEXT NOT NULL, category TEXT NOT NULL,
     brand TEXT, status TEXT NOT NULL, calories_100g REAL NOT NULL,
     protein_100g REAL NOT NULL, carbs_100g REAL NOT NULL, fat_100g REAL NOT NULL,
-    price_kg REAL, notes TEXT, serving_label TEXT)`);
+    price_kg REAL, notes TEXT, serving_label TEXT, serving_grams REAL)`);
   await db.run(`CREATE TABLE IF NOT EXISTS recipes (
     id ${idType} PRIMARY KEY ${autoInc}, name TEXT NOT NULL,
     portions INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
@@ -35,6 +35,10 @@ async function ensureTablesExist(db) {
     const hasServing = Array.isArray(cols) && cols.some(c => c.name === 'serving_label');
     if (!hasServing) {
       await db.run('ALTER TABLE ingredients ADD COLUMN serving_label TEXT');
+    }
+    const hasServingGrams = Array.isArray(cols) && cols.some(c => c.name === 'serving_grams');
+    if (!hasServingGrams) {
+      try { await db.run('ALTER TABLE ingredients ADD COLUMN serving_grams REAL'); } catch (e) { }
     }
   } catch (e) {
     // ignore - attempt best-effort migration for sqlite; Postgres path may differ

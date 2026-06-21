@@ -28,8 +28,8 @@ export async function GET() {
       const exists = await db.get('SELECT id FROM ingredients WHERE name = ?', [item.name]);
       if (exists) { skipped++; continue; }
       await db.run(
-        `INSERT INTO ingredients (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [item.name, item.category, item.brand, item.status, item.calories_100g, item.protein_100g, item.carbs_100g, item.fat_100g, item.price_kg, item.notes, item.serving_label || null]
+        `INSERT INTO ingredients (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [item.name, item.category, item.brand, item.status, item.calories_100g, item.protein_100g, item.carbs_100g, item.fat_100g, item.price_kg, item.notes, item.serving_label || null, item.serving_grams || null]
       );
       added++;
     }

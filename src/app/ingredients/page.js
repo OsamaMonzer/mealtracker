@@ -25,6 +25,7 @@ export default function IngredientsPage() {
   const [extResults, setExtResults] = useState([]);
   const [extLoading, setExtLoading] = useState(false);
   const [showExt, setShowExt] = useState(false);
+  const [extSource, setExtSource] = useState('both');
   const [filterCat, setFilterCat] = useState('All');
   const [error, setError]       = useState('');
   const [seeding, setSeeding]   = useState(false);
@@ -65,12 +66,30 @@ export default function IngredientsPage() {
     setEditId(i.id);
     setForm({ name: i.name, category: i.category, brand: i.brand || '', status: i.status,
       calories_100g: i.calories_100g, protein_100g: i.protein_100g, carbs_100g: i.carbs_100g, fat_100g: i.fat_100g,
-      serving_g: i.serving_label || '100', price_kg: i.price_kg || '', notes: i.notes || '' });
+      serving_g: i.serving_label || (i.serving_grams ? String(i.serving_grams) : '100'), price_kg: i.price_kg || '', notes: i.notes || '' });
     setShowForm(true);
   }
 
   function nutritionPayload() {
-    const serving = parseFloat(form.serving_g) || 100;
+    // determine grams for serving_g (supports text like "1 egg")
+    function parseServingToGrams(s) {
+      if (s == null) return 100;
+      const str = String(s).trim();
+      if (!str) return 100;
+      const gMatch = str.match(/^(\d+(?:\.\d+)?)\s*(g|gr|gram|grams)?$/i);
+      if (gMatch) return parseFloat(gMatch[1]);
+      const qtyMatch = str.match(/^(\d+(?:\.\d+)?)\s*(\w+)\b/i);
+      const mapping = { egg: 60, eggs: 60, slice: 30, slices: 30, tbsp: 15, tablespoon: 15, tsp: 5, teaspoon: 5, cup: 240 };
+      if (qtyMatch) {
+        const qty = parseFloat(qtyMatch[1]);
+        const unit = qtyMatch[2].toLowerCase();
+        if (mapping[unit]) return +(qty * mapping[unit]).toFixed(2);
+      }
+      const num = parseFloat(str);
+      return Number.isFinite(num) ? num : 100;
+    }
+
+    const serving = parseServingToGrams(form.serving_g) || 100;
     const multiplier = 100 / serving;
     const convert = value => {
       const parsed = parseFloat(value);
@@ -210,7 +229,31 @@ export default function IngredientsPage() {
           </select>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <button className="btn" onClick={() => setShowExt(s => !s)}>{showExt ? 'Hide DB Search' : 'Search DB'}</button>
+            <button className="btn" onClick={() => setShowExt(s => !s)}>{showExt ? 'Hide DB Search' : 'Search DB'}</button>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button className="btn" onClick={() => { window.open('/api/db/backup', '_blank'); }}>Download Backup</button>
+            <label className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+              Upload Backup
+              <input type="file" accept=".db" style={{ display: 'none' }} onChange={e => {
+                const f = e.target.files && e.target.files[0];
+                if (!f) return;
+                const reader = new FileReader();
+                reader.onload = async () => {
+                  try {
+                    const dataUrl = reader.result;
+                    const b64 = String(dataUrl).split(',')[1];
+                    setExtLoading(true);
+                    const res = await fetch('/api/db/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileBase64: b64 }) });
+                    const data = await res.json();
+                    if (res.ok) { showToast('DB restored — reload page'); setTimeout(() => window.location.reload(), 800); }
+                    else { alert('Restore error: ' + (data.error || 'unknown')); }
+                  } catch (err) { console.error(err); alert('Restore failed'); }
+                  finally { setExtLoading(false); }
+                };
+                reader.readAsDataURL(f);
+              }} />
+            </label>
         </div>
         <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{visible.length} items</span>
       </div>
@@ -218,13 +261,27 @@ export default function IngredientsPage() {
       {showExt && (
         <div className="card" style={{ marginBottom: '1rem' }}>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <input className="form-input" placeholder="Search Open Food Facts..." value={extQuery} onChange={e => setExtQuery(e.target.value)} style={{ flex: 1 }} />
+            <input className="form-input" placeholder="Search products or local..." value={extQuery} onChange={e => setExtQuery(e.target.value)} style={{ flex: 1 }} />
+            <select className="form-input" value={extSource} onChange={e => setExtSource(e.target.value)} style={{ width: '180px' }}>
+              <option value="both">Both (local + OpenFoodFacts)</option>
+              <option value="local">Local DB</option>
+              <option value="off">OpenFoodFacts</option>
+            </select>
             <button className="btn" onClick={async () => {
               try {
                 setExtLoading(true); setExtResults([]);
-                const res = await fetch(`/api/ingredients/search?q=${encodeURIComponent(extQuery)}`);
-                const data = await res.json();
-                setExtResults(Array.isArray(data) ? data : []);
+                const tasks = [];
+                const q = encodeURIComponent(extQuery);
+                if (extSource === 'both' || extSource === 'local') {
+                  tasks.push(fetch(`/api/ingredients/search-local?q=${q}`).then(r => r.json()));
+                }
+                if (extSource === 'both' || extSource === 'off') {
+                  tasks.push(fetch(`/api/ingredients/search?q=${q}`).then(r => r.json()));
+                }
+                const res = await Promise.all(tasks);
+                // merge arrays
+                const merged = res.flat().filter(Boolean).map(item => ({ ...item, calories_100g: item.calories_100g, protein_100g: item.protein_100g }));
+                setExtResults(merged);
               } catch (e) { console.error(e); setExtResults([]); }
               finally { setExtLoading(false); }
             }}>{extLoading ? 'Searching...' : 'Search'}</button>
@@ -235,15 +292,20 @@ export default function IngredientsPage() {
             ) : (
               <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {extResults.map(r => (
-                  <li key={r.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--surface2)' }}>
+                  <li key={`${r.source || 'off'}-${r.id}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--surface2)' }}>
                     <div>
-                      <div style={{ fontWeight: 600 }}>{r.name}</div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>{r.brand || ''} {r.serving_label ? `· ${r.serving_label}` : ''}</div>
+                      <div style={{ fontWeight: 600 }}>{r.name} <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>({r.source || 'openfoodfacts'})</span></div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>{r.brand || ''} {r.serving_label ? `· ${r.serving_label}` : r.serving_grams ? `· ${r.serving_grams} g` : ''}</div>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <div style={{ textAlign: 'right', fontSize: '0.9rem' }}>
+                        <div style={{ fontWeight: 700 }}>{r.calories_100g ?? '—'}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{r.protein_100g ? `${r.protein_100g} g protein` : ''}</div>
+                      </div>
                       <button className="btn" onClick={() => {
-                        // import into add form
-                        setForm({ ...blank, name: r.name, brand: r.brand || '', category: r.category || 'Other', status: 'Raw', serving_g: r.serving_label || '100', calories_100g: r.calories_100g || '', protein_100g: r.protein_100g || '', carbs_100g: r.carbs_100g || '', fat_100g: r.fat_100g || '', price_kg: '', notes: '' });
+                        // import into add form (prefer serving_label, fallback to grams)
+                        const servingVal = r.serving_label || (r.serving_grams ? String(r.serving_grams) : '100');
+                        setForm({ ...blank, name: r.name, brand: r.brand || '', category: r.category || 'Other', status: 'Raw', serving_g: servingVal, calories_100g: r.calories_100g || '', protein_100g: r.protein_100g || '', carbs_100g: r.carbs_100g || '', fat_100g: r.fat_100g || '', price_kg: '', notes: '' });
                         setShowForm(true);
                         setShowExt(false);
                       }}>Import</button>
@@ -322,7 +384,13 @@ export default function IngredientsPage() {
                       <td><span className={`badge ${CAT_CLASS[ing.category] || 'badge-gray'}`}>{ing.category}</span></td>
                       <td style={{ fontWeight: 700, color: 'var(--accent)' }}>
                         {ing.calories_100g}
-                        {ing.serving_label ? <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>per {ing.serving_label}</div> : <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>per 100g</div>}
+                        {ing.serving_label ? (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>per {ing.serving_label}</div>
+                        ) : ing.serving_grams ? (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>per {ing.serving_grams} g</div>
+                        ) : (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>per 100g</div>
+                        )}
                       </td>
                       <td style={{ color: 'var(--blue)' }}>{ing.protein_100g}g</td>
                       <td style={{ color: 'var(--gold)' }}>{ing.carbs_100g}g</td>

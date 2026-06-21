@@ -25,7 +25,8 @@ export async function GET(request) {
         protein_100g: nutr['proteins_100g'] ?? nutr['protein_100g'] ?? null,
         carbs_100g: nutr['carbohydrates_100g'] ?? nutr['carbohydrates_100g'] ?? null,
         fat_100g: nutr['fat_100g'] ?? null,
-        category: (p.categories_tags && p.categories_tags[0]) ? p.categories_tags[0].replace('en:', '').replace('-', ' ') : 'Other'
+        category: (p.categories_tags && p.categories_tags[0]) ? p.categories_tags[0].replace('en:', '').replace('-', ' ') : 'Other',
+        source: 'openfoodfacts'
       };
     });
 
