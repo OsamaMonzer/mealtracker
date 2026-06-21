@@ -33,6 +33,7 @@ export default function IngredientsPage() {
   const lastSeenIdRef = useRef(0);
   const lastCountRef = useRef(0);
   const clearTimerRef = useRef(null);
+  const [highlightedId, setHighlightedId] = useState(null);
 
   useEffect(() => { fetchIngredients(); }, []);
 
@@ -59,9 +60,11 @@ export default function IngredientsPage() {
           lastCountRef.current = count;
           // fetch new list
           await fetchIngredients();
-          // clear indicator after 5s
+          // highlight latest
+          setHighlightedId(latest);
+          // clear highlight and indicator after 5s
           if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
-          clearTimerRef.current = setTimeout(() => setNewItems(0), 5000);
+          clearTimerRef.current = setTimeout(() => { setNewItems(0); setHighlightedId(null); }, 5000);
         }
       } catch (e) { /* ignore polling errors */ }
     };
@@ -187,11 +190,12 @@ export default function IngredientsPage() {
       </div>
       {newItems > 0 && (
         <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
-          <div style={{ background: 'var(--surface3)', padding: '0.5rem 1rem', borderRadius: '8px', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-            <div style={{ fontWeight: 700 }}>{newItems} new ingredient{newItems>1?'s':''} added</div>
-            <button className="btn" onClick={() => { setNewItems(0); }}>Dismiss</button>
+            <div style={{ background: 'var(--surface3)', padding: '0.5rem 1rem', borderRadius: '8px', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <div style={{ fontWeight: 700 }}>{newItems} new ingredient{newItems>1?'s':''} added</div>
+              <button className="btn" onClick={() => { setNewItems(0); setHighlightedId(null); }}>Dismiss</button>
+              <button className="btn btn-primary" onClick={() => { setSearch(''); setFilterCat('All'); if (lastSeenIdRef.current) setHighlightedId(lastSeenIdRef.current); }}>Show New</button>
+            </div>
           </div>
-        </div>
       )}
 
       {/* Add Form (Only for new items now) */}
