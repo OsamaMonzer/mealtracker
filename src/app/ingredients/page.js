@@ -41,8 +41,9 @@ export default function IngredientsPage() {
     let mounted = true;
     const check = async () => {
       try {
-        const res = await fetch('/api/ingredients/latest?ts=' + Date.now(), { cache: 'no-store' });
-        const j = await res.json();
+          const res = await fetch('/api/ingredients/latest?ts=' + Date.now(), { cache: 'no-store' });
+          const j = await res.json();
+          console.debug('poll latest:', j);
         if (!mounted) return;
         const latest = j.lastId || 0;
         const count = j.count || 0;
@@ -72,8 +73,9 @@ export default function IngredientsPage() {
   async function fetchIngredients() {
     try {
       setError('');
-      const res = await fetch('/api/ingredients?ts=' + Date.now());
+      const res = await fetch('/api/ingredients?ts=' + Date.now(), { cache: 'no-store' });
       const data = await res.json();
+      console.debug('fetched ingredients', (Array.isArray(data) ? data.length : 0));
       if (!res.ok) throw new Error(data.error || 'Could not load ingredients');
       if (!Array.isArray(data)) throw new Error('Ingredients API did not return a list');
       setIngredients(data);
