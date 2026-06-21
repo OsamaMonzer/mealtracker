@@ -28,6 +28,63 @@ export async function GET(request) {
       return { label: str, grams: null };
     }
 
+    // If barcode param present, OpenFoodFacts returns a single product object at /api/v0/product/<barcode>.json
+    const barcodeParam = searchParams.get('barcode') || null;
+    if (barcodeParam) {
+      try {
+        const prodUrl = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(barcodeParam)}.json`;
+        const pres = await fetch(prodUrl);
+        if (!pres.ok) return NextResponse.json([], { status: 200 });
+        const pdata = await pres.json();
+        const p = pdata.product;
+        if (!p) return NextResponse.json([], { status: 200 });
+        const nutr = p.nutriments || {};
+        const serv = parseServing(p.serving_size || '');
+
+        function toNumber(v) {
+          if (v === undefined || v === null) return null;
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        }
+
+        function per100From(n100, nserv, servGrams) {
+          const val100 = toNumber(n100);
+          if (val100 !== null) return Math.round(val100);
+          const valServ = toNumber(nserv);
+          if (valServ !== null && servGrams) {
+            const per100 = (valServ / servGrams) * 100;
+            return Math.round(per100);
+          }
+          return null;
+        }
+
+        const servingGrams = serv.grams;
+        const calories = per100From(nutr['energy-kcal_100g'] ?? nutr['energy_100g'], nutr['energy-kcal_serving'] ?? nutr['energy_serving'] ?? nutr['energy'], servingGrams);
+        const protein = per100From(nutr['proteins_100g'] ?? nutr['protein_100g'], nutr['proteins_serving'] ?? nutr['protein_serving'], servingGrams);
+        const carbs = per100From(nutr['carbohydrates_100g'] ?? nutr['carbohydrates_100g'], nutr['carbohydrates_serving'] ?? nutr['carbohydrates'], servingGrams);
+        const fat = per100From(nutr['fat_100g'], nutr['fat_serving'] ?? nutr['fat'], servingGrams);
+
+        const result = [{
+          id: p.id || p.code || p._id || `${p.code || p._id}`,
+          name: p.product_name || p.generic_name || p.brands || 'Unknown',
+          brand: p.brands || '',
+          serving_label: serv.label || p.serving_size || null,
+          serving_grams: serv.grams,
+          calories_100g: calories,
+          protein_100g: protein,
+          carbs_100g: carbs,
+          fat_100g: fat,
+          category: (p.categories_tags && p.categories_tags[0]) ? p.categories_tags[0].replace('en:', '').replace('-', ' ') : 'Other',
+          source: 'openfoodfacts'
+        }];
+
+        return NextResponse.json(result);
+      } catch (e) {
+        console.error('Barcode lookup error', e);
+        return NextResponse.json([], { status: 200 });
+      }
+    }
+
     const results = (data.products || []).map(p => {
       const nutr = p.nutriments || {};
       const serv = parseServing(p.serving_size || '');

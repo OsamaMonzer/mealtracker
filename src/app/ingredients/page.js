@@ -238,85 +238,33 @@ export default function IngredientsPage() {
       {showExt && (
         <div className="card" style={{ marginBottom: '1rem' }}>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <input className="form-input" placeholder="Search products or local..." value={extQuery} onChange={e => setExtQuery(e.target.value)} style={{ flex: 1 }} />
-            <select className="form-input" value={extSource} onChange={e => setExtSource(e.target.value)} style={{ width: '220px' }}>
-              <option value="both">Both (Local + OpenFoodFacts)</option>
-              <option value="local">Local DB</option>
-              <option value="off">OpenFoodFacts</option>
-            </select>
+            <input className="form-input" placeholder="Search OpenFoodFacts (query or barcode)" value={extQuery} onChange={e => setExtQuery(e.target.value)} style={{ flex: 1 }} />
             <button className="btn" onClick={async () => {
               try {
                 setExtLoading(true); setExtResults([]);
-                const tasks = [];
-                const q = encodeURIComponent(extQuery);
-                if (extSource === 'both' || extSource === 'local') {
-                  tasks.push(fetch(`/api/ingredients/search-local?q=${q}`).then(r => r.json()));
-                }
-                if (extSource === 'both' || extSource === 'off') {
-                  tasks.push(fetch(`/api/ingredients/search?q=${q}`).then(r => r.json()));
-                }
-                // USDA removed — only local + OpenFoodFacts
-                const res = await Promise.all(tasks);
-                // merge arrays and deduplicate by normalized name with source-priority and completeness scoring
-                const all = res.flat().filter(Boolean);
+                const q = extQuery.trim();
+                if (!q) { setExtResults([]); return; }
+                // detect barcode: numeric and length 8-13
+                const isBarcode = /^\d{8,13}$/.test(q);
+                const url = isBarcode ? `/api/ingredients/search?barcode=${encodeURIComponent(q)}` : `/api/ingredients/search?q=${encodeURIComponent(q)}`;
+                const res = await fetch(url).then(r => r.json()).catch(() => []);
+                const all = Array.isArray(res) ? res.filter(Boolean) : [];
+                // For OpenFoodFacts-only results, just normalize names and dedupe by normalized name
                 const normalize = n => (n || '').toString().trim().toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
-                const sourcePriority = s => {
-                  const src = (s || '').toString().toLowerCase();
-                  if (src.includes('local')) return 2;
-                  if (src.includes('openfoodfacts') || src.includes('off') || src.includes('open')) return 1;
-                  return 0;
-                };
-                const countNumeric = it => ['calories_100g','protein_100g','carbs_100g','fat_100g','serving_grams'].reduce((c,f) => c + (it[f] || it[f] === 0 ? 1 : 0), 0);
-
                 const map = new Map();
                 for (const item of all) {
-                  const keyRaw = item.name || item.foodName || '';
-                  const key = normalize(keyRaw) || null;
-                  const src = item.source || 'external';
-                  const itemScore = sourcePriority(src) * 100 + countNumeric(item);
-
-                  if (!key) {
-                    const id = item.id || item.fdcId || item._id || Math.random().toString(36).slice(2,9);
-                    map.set(id, { ...item, sources: new Set([src]), id });
-                    continue;
-                  }
-
-                  if (!map.has(key)) {
-                    map.set(key, { ...item, sources: new Set([src]), _score: itemScore });
-                  } else {
-                    const existing = map.get(key);
-                    const existingScore = existing._score || 0;
-                    // if new item is higher score, replace, but merge sources and keep missing fields filled
-                    if (itemScore > existingScore) {
-                      const merged = { ...item, sources: new Set([...(existing.sources || []), src]), _score: itemScore };
-                      // fill any empty fields from existing
-                      for (const f of ['brand','category','serving_label','serving_grams','calories_100g','protein_100g','carbs_100g','fat_100g']) {
-                        if ((merged[f] === undefined || merged[f] === '' || merged[f] === null) && (existing[f] !== undefined && existing[f] !== null && existing[f] !== '')) {
-                          merged[f] = existing[f];
-                        }
-                      }
-                      map.set(key, merged);
-                    } else {
-                      // keep existing, but fill any missing numeric fields from item
-                      for (const f of ['calories_100g','protein_100g','carbs_100g','fat_100g','serving_label','serving_grams']) {
-                        if ((existing[f] === undefined || existing[f] === '' || existing[f] === null) && (item[f] !== undefined && item[f] !== null && item[f] !== '')) {
-                          existing[f] = item[f];
-                        }
-                      }
-                      if (!existing.brand && item.brand) existing.brand = item.brand;
-                      if (!existing.category && item.category) existing.category = item.category;
-                      existing.sources.add(src);
+                  const key = normalize(item.name || '') || Math.random().toString(36).slice(2,9);
+                  if (!map.has(key)) map.set(key, { ...item, sources: new Set([item.source || 'openfoodfacts']) });
+                  else {
+                    const ex = map.get(key);
+                    for (const f of ['calories_100g','protein_100g','carbs_100g','fat_100g','serving_label','serving_grams']) {
+                      if ((ex[f] === undefined || ex[f] === '' || ex[f] === null) && (item[f] !== undefined && item[f] !== null && item[f] !== '')) ex[f] = item[f];
                     }
+                    if (!ex.brand && item.brand) ex.brand = item.brand;
+                    ex.sources.add(item.source || 'openfoodfacts');
                   }
                 }
-
-                const merged = Array.from(map.values()).map(it => {
-                  const srcArr = Array.from(it.sources || []);
-                  const id = it.id || it.fdcId || Math.random().toString(36).slice(2,9);
-                  // remove internal score before returning
-                  if (it._score) delete it._score;
-                  return { ...it, source: srcArr.join(','), id };
-                });
+                const merged = Array.from(map.values()).map(it => ({ ...it, source: Array.from(it.sources).join(','), id: it.id || Math.random().toString(36).slice(2,9) }));
                 setExtResults(merged);
               } catch (e) { console.error(e); setExtResults([]); }
               finally { setExtLoading(false); }
