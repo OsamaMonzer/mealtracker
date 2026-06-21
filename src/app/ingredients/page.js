@@ -21,6 +21,10 @@ export default function IngredientsPage() {
   const [form, setForm]         = useState(blank);
   const [editId, setEditId]     = useState(null);
   const [search, setSearch]     = useState('');
+  const [extQuery, setExtQuery] = useState('');
+  const [extResults, setExtResults] = useState([]);
+  const [extLoading, setExtLoading] = useState(false);
+  const [showExt, setShowExt] = useState(false);
   const [filterCat, setFilterCat] = useState('All');
   const [error, setError]       = useState('');
   const [seeding, setSeeding]   = useState(false);
@@ -61,7 +65,7 @@ export default function IngredientsPage() {
     setEditId(i.id);
     setForm({ name: i.name, category: i.category, brand: i.brand || '', status: i.status,
       calories_100g: i.calories_100g, protein_100g: i.protein_100g, carbs_100g: i.carbs_100g, fat_100g: i.fat_100g,
-      serving_g: '100', price_kg: i.price_kg || '', notes: i.notes || '' });
+      serving_g: i.serving_label || '100', price_kg: i.price_kg || '', notes: i.notes || '' });
     setShowForm(true);
   }
 
@@ -152,8 +156,8 @@ export default function IngredientsPage() {
               </select>
             </div>
             <div className="form-group">
-              <label>Nutrition label grams</label>
-              <input required min="1" type="number" step="any" className="form-input" value={form.serving_g}
+              <label>Nutrition label grams / serving (e.g. 100 or "1 egg")</label>
+              <input required type="text" className="form-input" value={form.serving_g}
                 onChange={e => setForm({ ...form, serving_g: e.target.value })} />
             </div>
             {['calories_100g', 'protein_100g'].map(key => (
@@ -205,8 +209,52 @@ export default function IngredientsPage() {
             {CATEGORIES.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <button className="btn" onClick={() => setShowExt(s => !s)}>{showExt ? 'Hide DB Search' : 'Search DB'}</button>
+        </div>
         <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{visible.length} items</span>
       </div>
+
+      {showExt && (
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <input className="form-input" placeholder="Search Open Food Facts..." value={extQuery} onChange={e => setExtQuery(e.target.value)} style={{ flex: 1 }} />
+            <button className="btn" onClick={async () => {
+              try {
+                setExtLoading(true); setExtResults([]);
+                const res = await fetch(`/api/ingredients/search?q=${encodeURIComponent(extQuery)}`);
+                const data = await res.json();
+                setExtResults(Array.isArray(data) ? data : []);
+              } catch (e) { console.error(e); setExtResults([]); }
+              finally { setExtLoading(false); }
+            }}>{extLoading ? 'Searching...' : 'Search'}</button>
+          </div>
+          <div style={{ marginTop: '0.75rem' }}>
+            {extResults.length === 0 ? (
+              <div style={{ color: 'var(--text-dim)' }}>No results</div>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {extResults.map(r => (
+                  <li key={r.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--surface2)' }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{r.name}</div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>{r.brand || ''} {r.serving_label ? `· ${r.serving_label}` : ''}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button className="btn" onClick={() => {
+                        // import into add form
+                        setForm({ ...blank, name: r.name, brand: r.brand || '', category: r.category || 'Other', status: 'Raw', serving_g: r.serving_label || '100', calories_100g: r.calories_100g || '', protein_100g: r.protein_100g || '', carbs_100g: r.carbs_100g || '', fat_100g: r.fat_100g || '', price_kg: '', notes: '' });
+                        setShowForm(true);
+                        setShowExt(false);
+                      }}>Import</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -235,7 +283,7 @@ export default function IngredientsPage() {
               <tr>
                 <th style={{ paddingLeft: '1.75rem' }}>Name</th>
                 <th>Category</th>
-                <th>Cal/100g</th>
+                <th>Cal</th>
                 <th>Protein</th>
                 <th>Carbs</th>
                 <th>Fat</th>
@@ -253,7 +301,7 @@ export default function IngredientsPage() {
                         <select className="form-input" style={{ padding: '0.4rem 0.6rem' }} value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
                           {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                         </select>
-                        <input required min="1" title="Nutrition label grams" type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.serving_g} onChange={e => setForm({...form, serving_g: e.target.value})} />
+                        <input required title="Nutrition label grams / serving" type="text" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.serving_g} onChange={e => setForm({...form, serving_g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.calories_100g} onChange={e => setForm({...form, calories_100g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.protein_100g} onChange={e => setForm({...form, protein_100g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.carbs_100g} onChange={e => setForm({...form, carbs_100g: e.target.value})} />
@@ -272,7 +320,10 @@ export default function IngredientsPage() {
                         {ing.brand && <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '0.1rem' }}>{ing.brand}</div>}
                       </td>
                       <td><span className={`badge ${CAT_CLASS[ing.category] || 'badge-gray'}`}>{ing.category}</span></td>
-                      <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{ing.calories_100g}</td>
+                      <td style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                        {ing.calories_100g}
+                        {ing.serving_label ? <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>per {ing.serving_label}</div> : <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>per 100g</div>}
+                      </td>
                       <td style={{ color: 'var(--blue)' }}>{ing.protein_100g}g</td>
                       <td style={{ color: 'var(--gold)' }}>{ing.carbs_100g}g</td>
                       <td style={{ color: 'var(--red)' }}>{ing.fat_100g}g</td>
