@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "backup-db": "node src/scripts/backupDb.js",
+    "restore-db": "node src/scripts/restoreDb.js",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
