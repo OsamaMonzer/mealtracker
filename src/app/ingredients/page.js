@@ -240,10 +240,9 @@ export default function IngredientsPage() {
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <input className="form-input" placeholder="Search products or local..." value={extQuery} onChange={e => setExtQuery(e.target.value)} style={{ flex: 1 }} />
             <select className="form-input" value={extSource} onChange={e => setExtSource(e.target.value)} style={{ width: '220px' }}>
-              <option value="both">Both (Local + OpenFoodFacts + USDA)</option>
+              <option value="both">Both (Local + OpenFoodFacts)</option>
               <option value="local">Local DB</option>
               <option value="off">OpenFoodFacts</option>
-              <option value="usda">USDA / FoodData Central</option>
             </select>
             <button className="btn" onClick={async () => {
               try {
@@ -256,37 +255,67 @@ export default function IngredientsPage() {
                 if (extSource === 'both' || extSource === 'off') {
                   tasks.push(fetch(`/api/ingredients/search?q=${q}`).then(r => r.json()));
                 }
-                if (extSource === 'both' || extSource === 'usda') {
-                  tasks.push(fetch(`/api/ingredients/usda-search?q=${q}`).then(r => r.json()));
-                }
+                // USDA removed — only local + OpenFoodFacts
                 const res = await Promise.all(tasks);
-                // merge arrays and deduplicate by normalized name (prefer first-seen numeric fields)
+                // merge arrays and deduplicate by normalized name with source-priority and completeness scoring
                 const all = res.flat().filter(Boolean);
                 const normalize = n => (n || '').toString().trim().toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+                const sourcePriority = s => {
+                  const src = (s || '').toString().toLowerCase();
+                  if (src.includes('local')) return 2;
+                  if (src.includes('openfoodfacts') || src.includes('off') || src.includes('open')) return 1;
+                  return 0;
+                };
+                const countNumeric = it => ['calories_100g','protein_100g','carbs_100g','fat_100g','serving_grams'].reduce((c,f) => c + (it[f] || it[f] === 0 ? 1 : 0), 0);
+
                 const map = new Map();
                 for (const item of all) {
-                  const key = normalize(item.name || item.foodName || '');
+                  const keyRaw = item.name || item.foodName || '';
+                  const key = normalize(keyRaw) || null;
                   const src = item.source || 'external';
-                  if (!map.has(key) || !key) {
-                    // clone and track sources
-                    map.set(key || Math.random().toString(36).slice(2,9), { ...item, sources: new Set([src]) });
+                  const itemScore = sourcePriority(src) * 100 + countNumeric(item);
+
+                  if (!key) {
+                    const id = item.id || item.fdcId || item._id || Math.random().toString(36).slice(2,9);
+                    map.set(id, { ...item, sources: new Set([src]), id });
+                    continue;
+                  }
+
+                  if (!map.has(key)) {
+                    map.set(key, { ...item, sources: new Set([src]), _score: itemScore });
                   } else {
                     const existing = map.get(key);
-                    existing.sources.add(src);
-                    // prefer existing numeric fields, otherwise take from new item
-                    for (const field of ['calories_100g','protein_100g','carbs_100g','fat_100g','serving_label','serving_grams']) {
-                      if ((existing[field] === undefined || existing[field] === '' || existing[field] === null) && (item[field] !== undefined && item[field] !== null && item[field] !== '')) {
-                        existing[field] = item[field];
+                    const existingScore = existing._score || 0;
+                    // if new item is higher score, replace, but merge sources and keep missing fields filled
+                    if (itemScore > existingScore) {
+                      const merged = { ...item, sources: new Set([...(existing.sources || []), src]), _score: itemScore };
+                      // fill any empty fields from existing
+                      for (const f of ['brand','category','serving_label','serving_grams','calories_100g','protein_100g','carbs_100g','fat_100g']) {
+                        if ((merged[f] === undefined || merged[f] === '' || merged[f] === null) && (existing[f] !== undefined && existing[f] !== null && existing[f] !== '')) {
+                          merged[f] = existing[f];
+                        }
                       }
+                      map.set(key, merged);
+                    } else {
+                      // keep existing, but fill any missing numeric fields from item
+                      for (const f of ['calories_100g','protein_100g','carbs_100g','fat_100g','serving_label','serving_grams']) {
+                        if ((existing[f] === undefined || existing[f] === '' || existing[f] === null) && (item[f] !== undefined && item[f] !== null && item[f] !== '')) {
+                          existing[f] = item[f];
+                        }
+                      }
+                      if (!existing.brand && item.brand) existing.brand = item.brand;
+                      if (!existing.category && item.category) existing.category = item.category;
+                      existing.sources.add(src);
                     }
-                    // keep other useful fields when empty
-                    if (!existing.brand && item.brand) existing.brand = item.brand;
-                    if (!existing.category && item.category) existing.category = item.category;
                   }
                 }
+
                 const merged = Array.from(map.values()).map(it => {
                   const srcArr = Array.from(it.sources || []);
-                  return { ...it, source: srcArr.join(','), id: it.id || it.fdcId || it._id || Math.random().toString(36).slice(2,9) };
+                  const id = it.id || it.fdcId || Math.random().toString(36).slice(2,9);
+                  // remove internal score before returning
+                  if (it._score) delete it._score;
+                  return { ...it, source: srcArr.join(','), id };
                 });
                 setExtResults(merged);
               } catch (e) { console.error(e); setExtResults([]); }
