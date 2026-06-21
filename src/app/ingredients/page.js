@@ -231,30 +231,7 @@ export default function IngredientsPage() {
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <button className="btn" onClick={() => setShowExt(s => !s)}>{showExt ? 'Hide DB Search' : 'Search DB'}</button>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <button className="btn" onClick={() => { window.open('/api/db/backup', '_blank'); }}>Download Backup</button>
-            <label className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-              Upload Backup
-              <input type="file" accept=".db" style={{ display: 'none' }} onChange={e => {
-                const f = e.target.files && e.target.files[0];
-                if (!f) return;
-                const reader = new FileReader();
-                reader.onload = async () => {
-                  try {
-                    const dataUrl = reader.result;
-                    const b64 = String(dataUrl).split(',')[1];
-                    setExtLoading(true);
-                    const res = await fetch('/api/db/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileBase64: b64 }) });
-                    const data = await res.json();
-                    if (res.ok) { showToast('DB restored — reload page'); setTimeout(() => window.location.reload(), 800); }
-                    else { alert('Restore error: ' + (data.error || 'unknown')); }
-                  } catch (err) { console.error(err); alert('Restore failed'); }
-                  finally { setExtLoading(false); }
-                };
-                reader.readAsDataURL(f);
-              }} />
-            </label>
-        </div>
+        
         <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{visible.length} items</span>
       </div>
 
@@ -262,10 +239,11 @@ export default function IngredientsPage() {
         <div className="card" style={{ marginBottom: '1rem' }}>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <input className="form-input" placeholder="Search products or local..." value={extQuery} onChange={e => setExtQuery(e.target.value)} style={{ flex: 1 }} />
-            <select className="form-input" value={extSource} onChange={e => setExtSource(e.target.value)} style={{ width: '180px' }}>
-              <option value="both">Both (local + OpenFoodFacts)</option>
+            <select className="form-input" value={extSource} onChange={e => setExtSource(e.target.value)} style={{ width: '220px' }}>
+              <option value="both">Both (Local + OpenFoodFacts + USDA)</option>
               <option value="local">Local DB</option>
               <option value="off">OpenFoodFacts</option>
+              <option value="usda">USDA / FoodData Central</option>
             </select>
             <button className="btn" onClick={async () => {
               try {
@@ -278,9 +256,38 @@ export default function IngredientsPage() {
                 if (extSource === 'both' || extSource === 'off') {
                   tasks.push(fetch(`/api/ingredients/search?q=${q}`).then(r => r.json()));
                 }
+                if (extSource === 'both' || extSource === 'usda') {
+                  tasks.push(fetch(`/api/ingredients/usda-search?q=${q}`).then(r => r.json()));
+                }
                 const res = await Promise.all(tasks);
-                // merge arrays
-                const merged = res.flat().filter(Boolean).map(item => ({ ...item, calories_100g: item.calories_100g, protein_100g: item.protein_100g }));
+                // merge arrays and deduplicate by normalized name (prefer first-seen numeric fields)
+                const all = res.flat().filter(Boolean);
+                const normalize = n => (n || '').toString().trim().toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+                const map = new Map();
+                for (const item of all) {
+                  const key = normalize(item.name || item.foodName || '');
+                  const src = item.source || 'external';
+                  if (!map.has(key) || !key) {
+                    // clone and track sources
+                    map.set(key || Math.random().toString(36).slice(2,9), { ...item, sources: new Set([src]) });
+                  } else {
+                    const existing = map.get(key);
+                    existing.sources.add(src);
+                    // prefer existing numeric fields, otherwise take from new item
+                    for (const field of ['calories_100g','protein_100g','carbs_100g','fat_100g','serving_label','serving_grams']) {
+                      if ((existing[field] === undefined || existing[field] === '' || existing[field] === null) && (item[field] !== undefined && item[field] !== null && item[field] !== '')) {
+                        existing[field] = item[field];
+                      }
+                    }
+                    // keep other useful fields when empty
+                    if (!existing.brand && item.brand) existing.brand = item.brand;
+                    if (!existing.category && item.category) existing.category = item.category;
+                  }
+                }
+                const merged = Array.from(map.values()).map(it => {
+                  const srcArr = Array.from(it.sources || []);
+                  return { ...it, source: srcArr.join(','), id: it.id || it.fdcId || it._id || Math.random().toString(36).slice(2,9) };
+                });
                 setExtResults(merged);
               } catch (e) { console.error(e); setExtResults([]); }
               finally { setExtLoading(false); }
