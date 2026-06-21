@@ -6,7 +6,7 @@ import { ArrowLeft, Plus, Pencil, Trash2, Search, SlidersHorizontal, Carrot, Che
 import { showToast } from '../../components/ToastContainer';
 
 const CATEGORIES = ['Protein', 'Carb', 'Fat', 'Vegetable', 'Fruit', 'Sauce', 'Dairy', 'Other'];
-const blank = { name: '', category: 'Protein', brand: '', status: 'Raw', serving_g: '100', calories_100g: '', protein_100g: '', carbs_100g: '', fat_100g: '', price_kg: '', notes: '' };
+const blank = { name: '', category: 'Protein', brand: '', status: 'Raw', serving_g: '', calories_100g: '', protein_100g: '', carbs_100g: '', fat_100g: '', price_kg: '', notes: '' };
 
 const CAT_CLASS = {
   Protein: 'badge-blue', Carb: 'badge-gold', Fat: 'badge-red',
@@ -108,7 +108,7 @@ export default function IngredientsPage() {
     setEditId(i.id);
     setForm({ name: i.name, category: i.category, brand: i.brand || '', status: i.status,
       calories_100g: i.calories_100g, protein_100g: i.protein_100g, carbs_100g: i.carbs_100g, fat_100g: i.fat_100g,
-      serving_g: i.serving_label || (i.serving_grams ? String(i.serving_grams) : '100'), price_kg: i.price_kg || '', notes: i.notes || '' });
+      serving_g: i.serving_label || (i.serving_grams ? String(i.serving_grams) : ''), price_kg: i.price_kg || '', notes: i.notes || '' });
     setShowForm(true);
   }
 
@@ -215,8 +215,8 @@ export default function IngredientsPage() {
               </select>
             </div>
             <div className="form-group">
-              <label>Nutrition label grams / serving (e.g. 100 or "1 egg")</label>
-              <input required type="text" className="form-input" value={form.serving_g}
+              <label>Serving (e.g. "1 egg", optional)</label>
+              <input type="text" className="form-input" placeholder="1 egg or 100" value={form.serving_g}
                 onChange={e => setForm({ ...form, serving_g: e.target.value })} />
             </div>
             {['calories_100g', 'protein_100g'].map(key => (
@@ -369,6 +369,7 @@ export default function IngredientsPage() {
               <tr>
                   <th style={{ paddingLeft: '1.75rem', textAlign: 'left' }}>Name</th>
                   <th style={{ textAlign: 'center' }}>Category</th>
+                  <th style={{ textAlign: 'center' }}>Serving</th>
                   <th style={{ textAlign: 'center' }}>Cal</th>
                   <th style={{ textAlign: 'center' }}>Protein</th>
                   <th style={{ textAlign: 'center' }}>Carbs</th>
@@ -387,7 +388,7 @@ export default function IngredientsPage() {
                         <select className="form-input" style={{ padding: '0.4rem 0.6rem' }} value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
                           {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                         </select>
-                        <input required title="Nutrition label grams / serving" type="text" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.serving_g} onChange={e => setForm({...form, serving_g: e.target.value})} />
+                        <input title="Serving (optional)" type="text" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.serving_g} onChange={e => setForm({...form, serving_g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.calories_100g} onChange={e => setForm({...form, calories_100g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.protein_100g} onChange={e => setForm({...form, protein_100g: e.target.value})} />
                         <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.carbs_100g} onChange={e => setForm({...form, carbs_100g: e.target.value})} />
