@@ -30,8 +30,8 @@ export default function IngredientsPage() {
   const [error, setError]       = useState('');
   const [seeding, setSeeding]   = useState(false);
   const [newItems, setNewItems] = useState(0);
-  const lastSeenIdRef = useRef(null);
-  const lastCountRef = useRef(null);
+  const lastSeenIdRef = useRef(0);
+  const lastCountRef = useRef(0);
   const clearTimerRef = useRef(null);
 
   useEffect(() => { fetchIngredients(); }, []);
@@ -41,7 +41,7 @@ export default function IngredientsPage() {
     let mounted = true;
     const check = async () => {
       try {
-        const res = await fetch('/api/ingredients/latest?ts=' + Date.now());
+        const res = await fetch('/api/ingredients/latest?ts=' + Date.now(), { cache: 'no-store' });
         const j = await res.json();
         if (!mounted) return;
         const latest = j.lastId || 0;
