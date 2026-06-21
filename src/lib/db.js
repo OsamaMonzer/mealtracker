@@ -31,17 +31,30 @@ async function ensureTablesExist(db) {
     id ${idType} PRIMARY KEY ${autoInc}, date TEXT NOT NULL, weight_kg REAL NOT NULL)`);
   // If an older DB exists, ensure new columns are present (best-effort)
   try {
-    const cols = await db.all("PRAGMA table_info(ingredients)");
-    const hasServing = Array.isArray(cols) && cols.some(c => c.name === 'serving_label');
-    if (!hasServing) {
-      await db.run('ALTER TABLE ingredients ADD COLUMN serving_label TEXT');
-    }
-    const hasServingGrams = Array.isArray(cols) && cols.some(c => c.name === 'serving_grams');
-    if (!hasServingGrams) {
-      try { await db.run('ALTER TABLE ingredients ADD COLUMN serving_grams REAL'); } catch (e) { }
+    if (isPostgres) {
+      // check columns in Postgres and add if missing
+      const cols = await db.all("SELECT column_name FROM information_schema.columns WHERE table_name = 'ingredients'");
+      const names = Array.isArray(cols) ? cols.map(c => c.column_name) : [];
+      if (!names.includes('serving_label')) {
+        try { await db.run('ALTER TABLE ingredients ADD COLUMN serving_label TEXT'); } catch (e) { console.warn('Could not add serving_label', e); }
+      }
+      if (!names.includes('serving_grams')) {
+        try { await db.run('ALTER TABLE ingredients ADD COLUMN serving_grams REAL'); } catch (e) { console.warn('Could not add serving_grams', e); }
+      }
+    } else {
+      const cols = await db.all("PRAGMA table_info(ingredients)");
+      const hasServing = Array.isArray(cols) && cols.some(c => c.name === 'serving_label');
+      if (!hasServing) {
+        await db.run('ALTER TABLE ingredients ADD COLUMN serving_label TEXT');
+      }
+      const hasServingGrams = Array.isArray(cols) && cols.some(c => c.name === 'serving_grams');
+      if (!hasServingGrams) {
+        try { await db.run('ALTER TABLE ingredients ADD COLUMN serving_grams REAL'); } catch (e) { }
+      }
     }
   } catch (e) {
-    // ignore - attempt best-effort migration for sqlite; Postgres path may differ
+    // ignore - best-effort migration
+    console.warn('Migration check failed', e);
   }
 }
 
