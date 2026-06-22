@@ -84,6 +84,8 @@ export async function GET() {
       weightLogData: weights.slice(-14).map(w => ({
         name: new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
         Weight: w.weight_kg,
+        hasPhoto: !!w.photo_url,
+        fullLog: w,
       })),
     });
   } catch (error) {
