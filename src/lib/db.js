@@ -1,7 +1,7 @@
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import path from 'path';
-import { sql } from '@vercel/postgres';
+import { Pool } from 'pg';
 
 const dbPath = path.resolve(process.cwd(), 'meals.db');
 let initialized = false;
@@ -12,10 +12,15 @@ function getPostgresUrl() {
 
 function usePostgres() {
   const url = getPostgresUrl();
-  if (url && !process.env.POSTGRES_URL) {
-    process.env.POSTGRES_URL = url;
-  }
   return !!url;
+}
+
+let pgPool;
+function getPgPool() {
+  if (!pgPool) {
+    pgPool = new Pool({ connectionString: getPostgresUrl() });
+  }
+  return pgPool;
 }
 
 async function ensureTablesExist(db) {
@@ -80,12 +85,12 @@ export async function openDb() {
     const db = {
       all: async (query, ...params) => {
         const p = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
-        const { rows } = await sql.query(translateQuery(query), p);
+        const { rows } = await getPgPool().query(translateQuery(query), p);
         return rows;
       },
       get: async (query, ...params) => {
         const p = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
-        const { rows } = await sql.query(translateQuery(query), p);
+        const { rows } = await getPgPool().query(translateQuery(query), p);
         return rows[0] || null;
       },
       run: async (query, ...params) => {
@@ -95,7 +100,7 @@ export async function openDb() {
         if (isInsert && !pgQuery.toUpperCase().includes('RETURNING')) {
           pgQuery += ' RETURNING id';
         }
-        const { rows } = await sql.query(pgQuery, p);
+        const { rows } = await getPgPool().query(pgQuery, p);
         return { lastID: rows[0]?.id };
       }
       ,
@@ -103,7 +108,7 @@ export async function openDb() {
         const p = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
         // translate ? placeholders to $1, $2... for postgres
         const pgQuery = translateQuery(query);
-        await sql.query(pgQuery, p);
+        await getPgPool().query(pgQuery, p);
         return;
       }
     };
