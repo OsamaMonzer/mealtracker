@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Carrot, BookOpen, UtensilsCrossed, Scale, TrendingDown, ChefHat, Flame, Beef, ChevronLeft, ChevronRight, X, Calendar, ImageIcon, RefreshCw, Trash2, Target } from 'lucide-react';
+import { Carrot, BookOpen, UtensilsCrossed, Scale, TrendingDown, ChefHat, Flame, Beef, ChevronLeft, ChevronRight, X, Calendar, ImageIcon, RefreshCw, Trash2, Target, Zap } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, ReferenceLine,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
@@ -11,20 +11,36 @@ import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime';
 import { showToast } from '../components/ToastContainer';
 
 const GOAL = 1800;
+const PROTEIN_GOAL = 150; // g
 const WEIGHT_TARGET = 75; // kg — dashed goal line
+
+// ── Streak calculator ─────────────────────────────────────────────────────
+function calcStreak(allDates) {
+  if (!allDates || allDates.length === 0) return 0;
+  const today = new Date().toISOString().split('T')[0];
+  const dateSet = new Set(allDates);
+  let streak = 0;
+  let cursor = new Date();
+  // Allow today OR yesterday as starting point (so streak doesn't break at midnight before logging)
+  if (!dateSet.has(today)) cursor.setDate(cursor.getDate() - 1);
+  while (true) {
+    const d = cursor.toISOString().split('T')[0];
+    if (!dateSet.has(d)) break;
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
 
 // ── Weight insight helpers ─────────────────────────────────────────────────
 function calcWeightInsights(weightLogData) {
   if (!weightLogData || weightLogData.length < 2) return null;
 
-  // Weekly change: compare last entry to entry ~7 days ago (or earliest available)
   const last = weightLogData[weightLogData.length - 1];
   const weekAgoIdx = Math.max(0, weightLogData.length - 8);
   const weekAgo = weightLogData[weekAgoIdx];
   const weeklyDiff = +(last.Weight - weekAgo.Weight).toFixed(2);
-  const weeklyDays = weightLogData.length - 1 - weekAgoIdx;
 
-  // Linear regression for projected date
   const n = weightLogData.length;
   const xs = weightLogData.map((_, i) => i);
   const ys = weightLogData.map(d => d.Weight);
@@ -50,11 +66,10 @@ function calcWeightInsights(weightLogData) {
     }
   }
 
-  // BMI helper (height hardcoded — adjust if you want dynamic)
-  const height = 1.75; // metres
+  const height = 1.75;
   const bmi = +(currentWeight / (height * height)).toFixed(1);
 
-  return { weeklyDiff, weeklyDays, projectedDate, currentWeight, bmi, slope };
+  return { weeklyDiff, projectedDate, currentWeight, bmi, slope };
 }
 
 // ── Photo Preview Modal ────────────────────────────────────────────────────
@@ -139,7 +154,6 @@ function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
             ref={replaceRef}
             type="file"
             accept="image/*"
-            capture="user"
             style={{ display: 'none' }}
             onChange={handleFileChange}
             id="home-replace-photo-input"
@@ -338,7 +352,6 @@ export default function Home() {
 
   const todayStr = new Date().toISOString().split('T')[0];
   const hour = new Date().getHours();
-  const greeting = hour < 5 ? 'Up late,' : hour < 12 ? 'Good morning,' : hour < 18 ? 'Good afternoon,' : 'Good evening,';
 
   async function fetchDashboard() {
     try {
@@ -357,6 +370,21 @@ export default function Home() {
     ['ingredients', 'recipes', 'recipe_ingredients', 'daily_logs', 'weight_logs'],
     fetchDashboard
   );
+
+  // ── Smart greeting ────────────────────────────────────────────────────────
+  function getGreeting(todayMacros, allDates) {
+    const timeGreet = hour < 5 ? 'Up late,' : hour < 12 ? 'Good morning,' : hour < 18 ? 'Good afternoon,' : 'Good evening,';
+    const todayLogged = allDates?.includes(todayStr);
+    const cals = todayMacros?.cals ?? 0;
+
+    if (!todayLogged || cals === 0) {
+      return { time: timeGreet, sub: "You haven't logged anything today yet." };
+    }
+    if (cals > GOAL) {
+      return { time: timeGreet, sub: `You're ${cals - GOAL} kcal over your goal today.` };
+    }
+    return { time: timeGreet, sub: `Nice — already logged ${cals} kcal today.` };
+  }
 
   // Weight photo handlers
   async function uploadPhoto(file, date) {
@@ -424,10 +452,16 @@ export default function Home() {
     ? { cals: chartEntry.Calories, p: '—', c: '—', f: '—' }
     : data?.todayMacros;
 
+  // Streak
+  const streak = calcStreak(allDates);
+
   // Weight insights
   const weightInsights = calcWeightInsights(data?.weightLogData);
 
-  // Custom dot for weight chart: filled accent if has photo
+  // Smart greeting
+  const greeting = getGreeting(data?.todayMacros, allDates);
+
+  // Custom dot for weight chart
   function WeightDot({ cx, cy, payload }) {
     if (!payload?.hasPhoto) {
       return <circle cx={cx} cy={cy} r={4} stroke="var(--accent)" strokeWidth={2} fill="white" />;
@@ -440,7 +474,6 @@ export default function Home() {
     );
   }
 
-  // Custom tooltip for weight chart
   function WeightTooltip({ active, payload }) {
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
@@ -457,6 +490,11 @@ export default function Home() {
     );
   }
 
+  // Weekly avg calorie bar color
+  const avgCals = data?.weeklyAvgCals ?? 0;
+  const avgPct = Math.min(100, (avgCals / GOAL) * 100);
+  const avgColor = avgCals > GOAL ? 'var(--red)' : 'var(--accent)';
+
   return (
     <main>
       {viewingDate && <DayModal date={viewingDate} onClose={() => setViewingDate(null)} />}
@@ -471,13 +509,15 @@ export default function Home() {
 
       {/* Header */}
       <div style={{ marginBottom: '3rem' }}>
-        <p className="page-eyebrow animate-fade-up stagger-1">{greeting}</p>
+        <p className="page-eyebrow animate-fade-up stagger-1">{greeting.time}</p>
         <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
           <h1 className="page-title animate-fade-up stagger-2" style={{ fontSize: '3rem' }}>
             Osama<em>'s Kitchen</em>
           </h1>
         </Link>
-        <p className="page-sub animate-fade-up stagger-3">Your personal nutrition & recipe hub.</p>
+        <p className="page-sub animate-fade-up stagger-3" style={{ color: data?.todayMacros?.cals > GOAL ? 'var(--red)' : 'var(--text-dim)' }}>
+          {loading ? 'Your personal nutrition & recipe hub.' : greeting.sub}
+        </p>
       </div>
 
       {/* Nav */}
@@ -553,10 +593,27 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Macros row with protein goal */}
             <div className="stats-row" style={{ marginTop: 'auto' }}>
               {isToday ? (
                 <>
-                  <div className="stat-item"><div className="stat-value" style={{ color: 'var(--blue)' }}>{data.todayMacros.p}g</div><div className="stat-label">Protein</div></div>
+                  <div className="stat-item">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                      <div className="stat-value" style={{ color: 'var(--blue)' }}>
+                        {data.todayMacros.p}g
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', fontWeight: 400, marginLeft: '0.2rem' }}>/ {PROTEIN_GOAL}g</span>
+                      </div>
+                      <div style={{ height: '4px', background: 'var(--surface2)', borderRadius: '999px', overflow: 'hidden', width: '100%' }}>
+                        <div style={{
+                          height: '100%',
+                          background: data.todayMacros.p >= PROTEIN_GOAL ? 'var(--accent)' : 'var(--blue)',
+                          width: `${Math.min(100, (data.todayMacros.p / PROTEIN_GOAL) * 100)}%`,
+                          transition: 'width 1s cubic-bezier(0.4,0,0.2,1)',
+                        }} />
+                      </div>
+                    </div>
+                    <div className="stat-label">Protein</div>
+                  </div>
                   <div className="stat-item" style={{ borderLeft: '1px solid var(--border)' }}><div className="stat-value" style={{ color: 'var(--gold)' }}>{data.todayMacros.c}g</div><div className="stat-label">Carbs</div></div>
                   <div className="stat-item" style={{ borderLeft: '1px solid var(--border)' }}><div className="stat-value" style={{ color: 'var(--red)' }}>{data.todayMacros.f}g</div><div className="stat-label">Fat</div></div>
                 </>
@@ -586,19 +643,40 @@ export default function Home() {
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: '0.3rem' }}>Started at {data.startingWeight ?? '—'} kg</div>
             </div>
+
             <div className="card-flat animate-fade-up stagger-3">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.75rem' }}>
                 <ChefHat size={14} color="var(--text-dim)" />
                 <span className="section-label" style={{ margin: 0 }}>Overview</span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                {/* Streak */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <Zap size={12} color={streak >= 3 ? 'var(--gold)' : 'var(--text-dim)'} />
+                    Logging streak
+                  </span>
+                  <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem', color: streak >= 7 ? 'var(--gold)' : streak >= 3 ? 'var(--accent)' : 'var(--text-main)' }}>
+                    {streak} {streak === 1 ? 'day' : 'days'}
+                  </span>
+                </div>
+                {/* 7-day avg with bar */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                    <span style={{ color: 'var(--text-sub)' }}>7-day avg</span>
+                    <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem', color: avgColor }}>{avgCals} kcal</span>
+                  </div>
+                  <div style={{ height: '4px', background: 'var(--surface2)', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', background: avgColor, width: `${avgPct}%`, transition: 'width 1s cubic-bezier(0.4,0,0.2,1)' }} />
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                    {avgCals > GOAL ? `▲ ${avgCals - GOAL} over goal` : `▼ ${GOAL - avgCals} under goal`}
+                  </div>
+                </div>
+                {/* Saved recipes */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
                   <span style={{ color: 'var(--text-sub)' }}>Saved recipes</span>
                   <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem' }}>{data.recipesSaved}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                  <span style={{ color: 'var(--text-sub)' }}>7-day avg calories</span>
-                  <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem', color: 'var(--accent)' }}>{data.weeklyAvgCals} kcal</span>
                 </div>
               </div>
             </div>
@@ -637,7 +715,6 @@ export default function Home() {
                         />
                       ))}
                     </Bar>
-                    <Line type="monotone" dataKey="Calories" stroke="var(--gold)" strokeWidth={2} dot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : (
@@ -660,11 +737,7 @@ export default function Home() {
 
               {/* ── Trend summary strip ── */}
               {weightInsights && (
-                <div style={{
-                  display: 'flex', gap: '0.5rem', marginBottom: '0.75rem',
-                  flexWrap: 'wrap',
-                }}>
-                  {/* Weekly change pill */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                     background: weightInsights.weeklyDiff < 0 ? 'rgba(0,150,136,0.08)' : 'rgba(229,57,53,0.08)',
@@ -678,8 +751,6 @@ export default function Home() {
                         ? `▲ Gained ${weightInsights.weeklyDiff} kg this week`
                         : '— No change this week'}
                   </div>
-
-                  {/* Projected date pill */}
                   {weightInsights.projectedDate && (
                     <div style={{
                       display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
@@ -709,7 +780,6 @@ export default function Home() {
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-dim)', fontFamily: 'Plus Jakarta Sans' }} />
                     <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false} width={34} tick={{ fontSize: 11, fill: 'var(--text-dim)' }} />
                     <Tooltip content={<WeightTooltip />} />
-                    {/* Goal line */}
                     <ReferenceLine
                       y={WEIGHT_TARGET}
                       stroke="#f59e0b"

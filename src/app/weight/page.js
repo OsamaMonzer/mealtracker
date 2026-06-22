@@ -88,12 +88,11 @@ function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
 
         {/* Actions */}
         <div style={{ padding: '0.5rem 1.25rem 1.25rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          {/* Hidden file input for replace */}
+          {/* Hidden file input for replace — no capture so user picks camera or library */}
           <input
             ref={replaceRef}
             type="file"
             accept="image/*"
-            capture="user"
             style={{ display: 'none' }}
             onChange={handleFileChange}
             id="replace-photo-input"
@@ -239,15 +238,12 @@ export default function WeightTracking() {
     showToast('Log deleted');
   }
 
-  // Delete photo only (keep the weight row)
   async function handleDeletePhoto(log) {
-    // Delete from storage
     await fetch('/api/weight/photo', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ photo_url: log.photo_url }),
     });
-    // Null out photo_url in the DB row
     await fetch(`/api/weight/${log.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -257,9 +253,7 @@ export default function WeightTracking() {
     showToast('Photo deleted');
   }
 
-  // Replace photo: delete old from storage, upload new, update row
   async function handleReplacePhoto(log, file) {
-    // Delete old photo from storage if exists
     if (log.photo_url) {
       await fetch('/api/weight/photo', {
         method: 'DELETE',
@@ -267,10 +261,8 @@ export default function WeightTracking() {
         body: JSON.stringify({ photo_url: log.photo_url }),
       });
     }
-    // Upload new
     const newUrl = await uploadPhoto(file, log.date);
     if (!newUrl) { showToast('Upload failed', 'error'); return; }
-    // Update row
     await fetch(`/api/weight/${log.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -280,7 +272,6 @@ export default function WeightTracking() {
     showToast('Photo replaced ✓');
   }
 
-  // For rows without a photo: upload one directly from table
   async function handleAddPhotoToExisting(log, file) {
     const newUrl = await uploadPhoto(file, log.date);
     if (!newUrl) { showToast('Upload failed', 'error'); return; }
@@ -315,7 +306,6 @@ export default function WeightTracking() {
     fullLog: L,
   }));
 
-  // Custom dot for chart: camera icon tinted if photo exists
   function CustomDot({ cx, cy, payload }) {
     if (!payload?.hasPhoto) {
       return <circle cx={cx} cy={cy} r={4} stroke="var(--accent)" strokeWidth={2} fill="white" />;
@@ -437,8 +427,9 @@ export default function WeightTracking() {
             </div>
           </div>
 
+          {/* No capture attr — user gets to choose camera or photo library */}
           <div style={{ marginBottom: '1rem' }}>
-            <input ref={fileInputRef} type="file" accept="image/*" capture="user" style={{ display: 'none' }}
+            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }}
               onChange={handlePhotoSelect} id="weight-photo-input" />
             {!form.photoPreview ? (
               <label htmlFor="weight-photo-input" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'var(--surface2)', border: '1.5px dashed var(--border)', borderRadius: '12px', padding: '0.85rem 1.2rem', cursor: 'pointer', color: 'var(--text-sub)', fontSize: '0.875rem', fontWeight: 500 }}>
@@ -464,7 +455,7 @@ export default function WeightTracking() {
         </form>
       </div>
 
-      {/* Chart — dots are highlighted if photo exists, clicking tooltip opens photo */}
+      {/* Chart */}
       {chartData.length > 1 && (
         <div className="card animate-fade-up" style={{ height: '290px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
@@ -517,7 +508,6 @@ export default function WeightTracking() {
                 const DIcon = diff == null ? Minus : diff > 0 ? TrendingUp : diff < 0 ? TrendingDown : Minus;
                 const dColor = diff == null ? 'var(--text-dim)' : diff > 0 ? 'var(--red)' : diff < 0 ? 'var(--accent)' : 'var(--text-sub)';
 
-                // hidden file input per row (for adding photo to existing entry)
                 const inputId = `add-photo-${log.id}`;
 
                 return (
@@ -544,8 +534,9 @@ export default function WeightTracking() {
                           </button>
                         ) : (
                           <>
+                            {/* No capture attr — user picks camera or library */}
                             <input
-                              type="file" accept="image/*" capture="user"
+                              type="file" accept="image/*"
                               style={{ display: 'none' }} id={inputId}
                               onChange={async e => {
                                 const file = e.target.files?.[0];
@@ -562,15 +553,3 @@ export default function WeightTracking() {
                           </>
                         )}
                         <button className="btn-icon-danger" onClick={() => handleDelete(log.id)}><Trash2 size={13} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </main>
-  );
-}
