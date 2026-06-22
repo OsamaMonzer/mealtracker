@@ -6,10 +6,22 @@ import { sql } from '@vercel/postgres';
 const dbPath = path.resolve(process.cwd(), 'meals.db');
 let initialized = false;
 
+function getPostgresUrl() {
+  return process.env.POSTGRES_URL || process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+}
+
+function usePostgres() {
+  const url = getPostgresUrl();
+  if (url && !process.env.POSTGRES_URL) {
+    process.env.POSTGRES_URL = url;
+  }
+  return !!url;
+}
+
 async function ensureTablesExist(db) {
   if (initialized) return;
   initialized = true;
-  const isPostgres = !!process.env.POSTGRES_URL;
+  const isPostgres = usePostgres();
   const idType = isPostgres ? 'SERIAL' : 'INTEGER';
   const autoInc = isPostgres ? '' : 'AUTOINCREMENT';
 
@@ -59,7 +71,7 @@ async function ensureTablesExist(db) {
 }
 
 export async function openDb() {
-  if (process.env.POSTGRES_URL) {
+  if (usePostgres()) {
     const translateQuery = (q) => {
       let i = 0;
       return q.replace(/\?/g, () => `$${++i}`);

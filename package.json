@@ -13,6 +13,7 @@
     "seed-data": "node src/scripts/seedData.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
     "@vercel/postgres": "^0.10.0",
     "lucide-react": "^1.21.0",
     "next": "14.2.3",

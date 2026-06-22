@@ -4,13 +4,29 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, BookOpen, Plus, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { showToast } from '../../components/ToastContainer';
+import { useSupabaseRealtime } from '../../hooks/useSupabaseRealtime';
 
 export default function RecipesPage() {
   const [recipes, setRecipes]   = useState([]);
   const [loading, setLoading]   = useState(true);
   const [expanded, setExpanded] = useState(null);
 
-  useEffect(() => { fetch('/api/recipes').then(r => r.json()).then(setRecipes).then(() => setLoading(false)).catch(() => setLoading(false)); }, []);
+  async function fetchRecipes() {
+    try {
+      setRecipes(await (await fetch('/api/recipes')).json());
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { fetchRecipes(); }, []);
+
+  useSupabaseRealtime(
+    ['recipes', 'recipe_ingredients', 'ingredients'],
+    fetchRecipes
+  );
 
   async function handleDelete(id) {
     await fetch(`/api/recipes/${id}`, { method: 'DELETE' });

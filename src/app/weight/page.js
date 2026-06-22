@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Scale, TrendingDown, TrendingUp, Minus, Trash2 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { showToast } from '../../components/ToastContainer';
+import { useSupabaseRealtime } from '../../hooks/useSupabaseRealtime';
 
 export default function WeightTracking() {
   const [logs, setLogs]       = useState([]);
@@ -15,6 +16,8 @@ export default function WeightTracking() {
   useEffect(() => {
     fetchLogs();
   }, []);
+
+  useSupabaseRealtime(['weight_logs'], () => fetchLogs());
 
   async function fetchLogs() {
     try { setLogs(await (await fetch('/api/weight')).json()); }

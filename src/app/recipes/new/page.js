@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ChefHat, Plus, X, Trash2 } from 'lucide-react';
+import { useSupabaseRealtime } from '../../../hooks/useSupabaseRealtime';
 
 const CATEGORIES = ['Protein', 'Carb', 'Fat', 'Vegetable', 'Fruit', 'Sauce', 'Dairy', 'Other'];
 const blankIng = { name: '', category: 'Protein', brand: '', status: 'Raw', calories_100g: '', protein_100g: '', carbs_100g: '', fat_100g: '', price_kg: '', notes: '' };
@@ -17,13 +18,23 @@ export default function RecipeBuilder() {
   const [ingForm, setIngForm]             = useState(blankIng);
   const [ingSaving, setIngSaving]         = useState(false);
 
-  useEffect(() => { fetch('/api/ingredients').then(r => r.json()).then(setIngredientsDB); }, []);
+  async function fetchIngredients() {
+    try {
+      setIngredientsDB(await (await fetch('/api/ingredients')).json());
+    } catch {
+      /* ignore */
+    }
+  }
+
+  useEffect(() => { fetchIngredients(); }, []);
+
+  useSupabaseRealtime(['ingredients'], fetchIngredients);
 
   async function saveIngredient(e) {
     e.preventDefault();
     setIngSaving(true);
     const res = await fetch('/api/ingredients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ingForm) });
-    if (res.ok) { setIngForm(blankIng); setShowIngForm(false); fetch('/api/ingredients').then(r => r.json()).then(setIngredientsDB); }
+    if (res.ok) { setIngForm(blankIng); setShowIngForm(false); fetchIngredients(); }
     else alert('Error saving ingredient');
     setIngSaving(false);
   }

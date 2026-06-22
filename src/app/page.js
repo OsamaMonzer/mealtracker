@@ -7,6 +7,7 @@ import {
   BarChart, Bar, LineChart, Line, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
+import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime';
 
 export default function Home() {
   const [data, setData] = useState(null);
@@ -14,12 +15,22 @@ export default function Home() {
   const hour = new Date().getHours();
   const greeting = hour < 5 ? 'Up late,' : hour < 12 ? 'Good morning,' : hour < 18 ? 'Good afternoon,' : 'Good evening,';
 
-  useEffect(() => {
-    fetch('/api/dashboard')
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+  async function fetchDashboard() {
+    try {
+      setData(await (await fetch('/api/dashboard')).json());
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { fetchDashboard(); }, []);
+
+  useSupabaseRealtime(
+    ['ingredients', 'recipes', 'recipe_ingredients', 'daily_logs', 'weight_logs'],
+    fetchDashboard
+  );
 
   return (
     <main>

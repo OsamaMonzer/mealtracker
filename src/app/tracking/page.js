@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, UtensilsCrossed, Sunrise, Sun, Moon, Apple, Plus, Trash2 } from 'lucide-react';
 import { showToast } from '../../components/ToastContainer';
+import { useSupabaseRealtime } from '../../hooks/useSupabaseRealtime';
 
 const MEAL_ICONS = { Breakfast: Sunrise, Lunch: Sun, Dinner: Moon, Snack: Apple };
 
@@ -17,12 +18,27 @@ export default function DailyTracking() {
     meal_type: 'Breakfast', recipe_id: '', portions_eaten: '1'
   });
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/daily').then(r => r.json()),
-      fetch('/api/recipes').then(r => r.json()),
-    ]).then(([logs, recipes]) => { setLogs(logs); setRecipes(recipes); setLoading(false); });
-  }, []);
+  async function fetchData() {
+    try {
+      const [logs, recipes] = await Promise.all([
+        fetch('/api/daily').then(r => r.json()),
+        fetch('/api/recipes').then(r => r.json()),
+      ]);
+      setLogs(logs);
+      setRecipes(recipes);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { fetchData(); }, []);
+
+  useSupabaseRealtime(
+    ['daily_logs', 'recipes', 'recipe_ingredients', 'ingredients'],
+    fetchData
+  );
 
   async function handleSubmit(e) {
     e.preventDefault();
