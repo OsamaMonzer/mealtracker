@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const db = await openDb();
-    const recipes = await db.all('SELECT * FROM recipes ORDER BY name ASC');
+    const recipes = await db.all("SELECT * FROM recipes WHERE status = 'active' ORDER BY name ASC");
     
     const fullRecipes = [];
     for(const r of recipes) {

@@ -37,7 +37,7 @@ async function ensureTablesExist(db) {
     price_kg REAL, notes TEXT, serving_label TEXT, serving_grams REAL)`);
   await db.run(`CREATE TABLE IF NOT EXISTS recipes (
     id ${idType} PRIMARY KEY ${autoInc}, name TEXT NOT NULL,
-    portions INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+    portions INTEGER DEFAULT 1, status TEXT DEFAULT 'active', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
   await db.run(`CREATE TABLE IF NOT EXISTS recipe_ingredients (
     id ${idType} PRIMARY KEY ${autoInc}, recipe_id INTEGER,
     ingredient_id INTEGER, weight_g REAL NOT NULL)`);
@@ -58,6 +58,12 @@ async function ensureTablesExist(db) {
       if (!names.includes('serving_grams')) {
         try { await db.run('ALTER TABLE ingredients ADD COLUMN serving_grams REAL'); } catch (e) { console.warn('Could not add serving_grams', e); }
       }
+      
+      const recipeCols = await db.all("SELECT column_name FROM information_schema.columns WHERE table_name = 'recipes'");
+      const recipeNames = Array.isArray(recipeCols) ? recipeCols.map(c => c.column_name) : [];
+      if (!recipeNames.includes('status')) {
+        try { await db.run("ALTER TABLE recipes ADD COLUMN status TEXT DEFAULT 'active'"); } catch (e) { }
+      }
     } else {
       const cols = await db.all("PRAGMA table_info(ingredients)");
       const hasServing = Array.isArray(cols) && cols.some(c => c.name === 'serving_label');
@@ -67,6 +73,12 @@ async function ensureTablesExist(db) {
       const hasServingGrams = Array.isArray(cols) && cols.some(c => c.name === 'serving_grams');
       if (!hasServingGrams) {
         try { await db.run('ALTER TABLE ingredients ADD COLUMN serving_grams REAL'); } catch (e) { }
+      }
+
+      const recipeCols = await db.all("PRAGMA table_info(recipes)");
+      const hasStatus = Array.isArray(recipeCols) && recipeCols.some(c => c.name === 'status');
+      if (!hasStatus) {
+        try { await db.run("ALTER TABLE recipes ADD COLUMN status TEXT DEFAULT 'active'"); } catch (e) { }
       }
     }
   } catch (e) {

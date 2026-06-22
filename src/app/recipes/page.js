@@ -76,6 +76,9 @@ export default function RecipesPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                <Link href={`/recipes/${recipe.id}/edit`} className="btn-icon" title="Edit">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                </Link>
                 <button className="btn-icon" title={expanded === recipe.id ? 'Hide' : 'Details'}
                   onClick={() => setExpanded(expanded === recipe.id ? null : recipe.id)}>
                   {expanded === recipe.id ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
