@@ -2,17 +2,62 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Carrot, BookOpen, UtensilsCrossed, Scale, TrendingDown, ChefHat, Flame, Beef, ChevronLeft, ChevronRight, X, Calendar, ImageIcon, RefreshCw, Trash2 } from 'lucide-react';
+import { Carrot, BookOpen, UtensilsCrossed, Scale, TrendingDown, ChefHat, Flame, Beef, ChevronLeft, ChevronRight, X, Calendar, ImageIcon, RefreshCw, Trash2, Target } from 'lucide-react';
 import {
-  BarChart, Bar, LineChart, Line, ComposedChart,
+  BarChart, Bar, LineChart, Line, ComposedChart, ReferenceLine,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime';
 import { showToast } from '../components/ToastContainer';
 
 const GOAL = 1800;
+const WEIGHT_TARGET = 75; // kg — dashed goal line
 
-// ── Photo Preview Modal (same as weight page) ──────────────────────────────
+// ── Weight insight helpers ─────────────────────────────────────────────────
+function calcWeightInsights(weightLogData) {
+  if (!weightLogData || weightLogData.length < 2) return null;
+
+  // Weekly change: compare last entry to entry ~7 days ago (or earliest available)
+  const last = weightLogData[weightLogData.length - 1];
+  const weekAgoIdx = Math.max(0, weightLogData.length - 8);
+  const weekAgo = weightLogData[weekAgoIdx];
+  const weeklyDiff = +(last.Weight - weekAgo.Weight).toFixed(2);
+  const weeklyDays = weightLogData.length - 1 - weekAgoIdx;
+
+  // Linear regression for projected date
+  const n = weightLogData.length;
+  const xs = weightLogData.map((_, i) => i);
+  const ys = weightLogData.map(d => d.Weight);
+  const sumX = xs.reduce((a, b) => a + b, 0);
+  const sumY = ys.reduce((a, b) => a + b, 0);
+  const sumXY = xs.reduce((s, x, i) => s + x * ys[i], 0);
+  const sumX2 = xs.reduce((s, x) => s + x * x, 0);
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+
+  let projectedDate = null;
+  const currentWeight = last.Weight;
+  const isLosing = slope < 0 && currentWeight > WEIGHT_TARGET;
+  const isGaining = slope > 0 && currentWeight < WEIGHT_TARGET;
+
+  if ((isLosing || isGaining) && Math.abs(slope) > 0.001) {
+    const stepsNeeded = (WEIGHT_TARGET - intercept) / slope;
+    const daysFromStart = stepsNeeded - (n - 1);
+    if (daysFromStart > 0 && daysFromStart < 1000) {
+      const d = new Date();
+      d.setDate(d.getDate() + Math.round(daysFromStart));
+      projectedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+  }
+
+  // BMI helper (height hardcoded — adjust if you want dynamic)
+  const height = 1.75; // metres
+  const bmi = +(currentWeight / (height * height)).toFixed(1);
+
+  return { weeklyDiff, weeklyDays, projectedDate, currentWeight, bmi, slope };
+}
+
+// ── Photo Preview Modal ────────────────────────────────────────────────────
 function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [working, setWorking] = useState(false);
@@ -313,7 +358,7 @@ export default function Home() {
     fetchDashboard
   );
 
-  // Weight photo handlers (mirrors weight page)
+  // Weight photo handlers
   async function uploadPhoto(file, date) {
     const fd = new FormData();
     fd.append('file', file);
@@ -359,17 +404,11 @@ export default function Home() {
 
   const allDates = data?.allDates || [];
   const selectedIdx = allDates.indexOf(selectedDate);
-
   const canGoPrev = selectedIdx > 0;
   const canGoNext = selectedIdx !== -1 && selectedIdx < allDates.length - 1;
 
-  function goPrev() {
-    if (canGoPrev) setSelectedDate(allDates[selectedIdx - 1]);
-  }
-
-  function goNext() {
-    if (canGoNext) setSelectedDate(allDates[selectedIdx + 1]);
-  }
+  function goPrev() { if (canGoPrev) setSelectedDate(allDates[selectedIdx - 1]); }
+  function goNext() { if (canGoNext) setSelectedDate(allDates[selectedIdx + 1]); }
 
   const isFuture = selectedDate && selectedDate > todayStr;
   const isToday = selectedDate === todayStr;
@@ -384,6 +423,9 @@ export default function Home() {
   const displayMacros = selectedDate && !isToday && chartEntry
     ? { cals: chartEntry.Calories, p: '—', c: '—', f: '—' }
     : data?.todayMacros;
+
+  // Weight insights
+  const weightInsights = calcWeightInsights(data?.weightLogData);
 
   // Custom dot for weight chart: filled accent if has photo
   function WeightDot({ cx, cy, payload }) {
@@ -606,16 +648,55 @@ export default function Home() {
               )}
             </div>
 
+            {/* ── Weight Trend Chart ── */}
             <div className="card animate-fade-up stagger-5" style={{ height: '280px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '1.5rem', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.6rem', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                   <TrendingDown size={14} color="var(--text-dim)" />
                   <span className="section-label" style={{ margin: 0 }}>Weight Trend</span>
                 </div>
                 <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>● = has photo</span>
               </div>
+
+              {/* ── Trend summary strip ── */}
+              {weightInsights && (
+                <div style={{
+                  display: 'flex', gap: '0.5rem', marginBottom: '0.75rem',
+                  flexWrap: 'wrap',
+                }}>
+                  {/* Weekly change pill */}
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                    background: weightInsights.weeklyDiff < 0 ? 'rgba(0,150,136,0.08)' : 'rgba(229,57,53,0.08)',
+                    borderRadius: '999px', padding: '0.2rem 0.65rem',
+                    fontSize: '0.72rem', fontWeight: 700,
+                    color: weightInsights.weeklyDiff < 0 ? 'var(--accent)' : 'var(--red)',
+                  }}>
+                    {weightInsights.weeklyDiff < 0
+                      ? `▼ Lost ${Math.abs(weightInsights.weeklyDiff)} kg this week`
+                      : weightInsights.weeklyDiff > 0
+                        ? `▲ Gained ${weightInsights.weeklyDiff} kg this week`
+                        : '— No change this week'}
+                  </div>
+
+                  {/* Projected date pill */}
+                  {weightInsights.projectedDate && (
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                      background: 'rgba(255,152,0,0.08)',
+                      borderRadius: '999px', padding: '0.2rem 0.65rem',
+                      fontSize: '0.72rem', fontWeight: 700,
+                      color: '#e65100',
+                    }}>
+                      <Target size={10} />
+                      {WEIGHT_TARGET} kg by {weightInsights.projectedDate}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {data.weightLogData && data.weightLogData.length > 1 ? (
-                <ResponsiveContainer width="100%" height="80%">
+                <ResponsiveContainer width="100%" height="72%">
                   <LineChart
                     data={data.weightLogData}
                     onClick={d => {
@@ -628,6 +709,14 @@ export default function Home() {
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-dim)', fontFamily: 'Plus Jakarta Sans' }} />
                     <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false} width={34} tick={{ fontSize: 11, fill: 'var(--text-dim)' }} />
                     <Tooltip content={<WeightTooltip />} />
+                    {/* Goal line */}
+                    <ReferenceLine
+                      y={WEIGHT_TARGET}
+                      stroke="#f59e0b"
+                      strokeDasharray="5 4"
+                      strokeWidth={1.5}
+                      label={{ value: `Goal ${WEIGHT_TARGET}kg`, position: 'insideTopRight', fontSize: 10, fill: '#f59e0b', fontWeight: 700, fontFamily: 'Plus Jakarta Sans' }}
+                    />
                     <Line
                       type="monotone"
                       dataKey="Weight"
