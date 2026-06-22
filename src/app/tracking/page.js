@@ -13,21 +13,25 @@ export default function DailyTracking() {
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(true);
-  const [isQuickAdd, setIsQuickAdd] = useState(false);
+  const [ingredients, setIngredients] = useState([]);
+  const [logMode, setLogMode] = useState('recipe'); // 'recipe', 'ingredient', 'quick_add'
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
     meal_type: 'Breakfast', recipe_id: '', portions_eaten: '1',
-    quick_add_name: '', quick_add_calories: ''
+    quick_add_name: '', quick_add_calories: '',
+    ingredient_id: '', weight_g: '100'
   });
 
   async function fetchData() {
     try {
-      const [logs, recipes] = await Promise.all([
+      const [logs, recipes, ings] = await Promise.all([
         fetch('/api/daily').then(r => r.json()),
         fetch('/api/recipes').then(r => r.json()),
+        fetch('/api/ingredients').then(r => r.json()),
       ]);
       setLogs(logs);
       setRecipes(recipes);
+      setIngredients(ings);
     } catch (e) {
       console.error(e);
     } finally {
@@ -44,18 +48,24 @@ export default function DailyTracking() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!isQuickAdd && !form.recipe_id) return;
+    if (logMode === 'recipe' && !form.recipe_id) return;
+    if (logMode === 'ingredient' && !form.ingredient_id) return;
     
-    const payload = isQuickAdd 
-        ? { ...form, recipe_id: 'QUICK_ADD', portions_eaten: '1' } 
-        : form;
+    let payload = form;
+    if (logMode === 'quick_add') {
+       payload = { ...form, recipe_id: 'QUICK_ADD', portions_eaten: '1', ingredient_id: '', weight_g: '' };
+    } else if (logMode === 'recipe') {
+       payload = { ...form, ingredient_id: '', weight_g: '', quick_add_name: '', quick_add_calories: '' };
+    } else if (logMode === 'ingredient') {
+       payload = { ...form, recipe_id: '', portions_eaten: '', quick_add_name: '', quick_add_calories: '' };
+    }
 
     const res = await fetch('/api/daily', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (res.ok) { 
       const newLogs = await (await fetch('/api/daily')).json(); 
       setLogs(newLogs); 
       showToast('Meal logged');
-      setForm(f => ({ ...f, quick_add_name: '', quick_add_calories: '', recipe_id: '' }));
+      setForm(f => ({ ...f, quick_add_name: '', quick_add_calories: '', recipe_id: '', ingredient_id: '', weight_g: '100' }));
     }
   }
 
@@ -92,11 +102,12 @@ export default function DailyTracking() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
              <div className="section-label" style={{ margin: 0 }}>Log a Meal</div>
              <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--surface2)', borderRadius: '99px', padding: '0.2rem' }}>
-                <button type="button" onClick={() => setIsQuickAdd(false)} className="btn" style={{ padding: '0.4rem 1rem', background: !isQuickAdd ? 'var(--card-bg)' : 'transparent', color: !isQuickAdd ? 'var(--text-main)' : 'var(--text-dim)', fontSize: '0.85rem', boxShadow: !isQuickAdd ? 'var(--shadow-sm)' : 'none', border: 'none' }}>Recipe</button>
-                <button type="button" onClick={() => setIsQuickAdd(true)} className="btn" style={{ padding: '0.4rem 1rem', background: isQuickAdd ? 'var(--card-bg)' : 'transparent', color: isQuickAdd ? 'var(--text-main)' : 'var(--text-dim)', fontSize: '0.85rem', boxShadow: isQuickAdd ? 'var(--shadow-sm)' : 'none', border: 'none' }}>Quick Add</button>
+                <button type="button" onClick={() => setLogMode('recipe')} className="btn" style={{ padding: '0.4rem 1rem', background: logMode==='recipe' ? 'var(--card-bg)' : 'transparent', color: logMode==='recipe' ? 'var(--text-main)' : 'var(--text-dim)', fontSize: '0.85rem', boxShadow: logMode==='recipe' ? 'var(--shadow-sm)' : 'none', border: 'none' }}>Recipe</button>
+                <button type="button" onClick={() => setLogMode('ingredient')} className="btn" style={{ padding: '0.4rem 1rem', background: logMode==='ingredient' ? 'var(--card-bg)' : 'transparent', color: logMode==='ingredient' ? 'var(--text-main)' : 'var(--text-dim)', fontSize: '0.85rem', boxShadow: logMode==='ingredient' ? 'var(--shadow-sm)' : 'none', border: 'none' }}>Ingredient</button>
+                <button type="button" onClick={() => setLogMode('quick_add')} className="btn" style={{ padding: '0.4rem 1rem', background: logMode==='quick_add' ? 'var(--card-bg)' : 'transparent', color: logMode==='quick_add' ? 'var(--text-main)' : 'var(--text-dim)', fontSize: '0.85rem', boxShadow: logMode==='quick_add' ? 'var(--shadow-sm)' : 'none', border: 'none' }}>Quick Add</button>
              </div>
           </div>
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: isQuickAdd ? '1fr 1fr 2fr 100px auto' : '1fr 1fr 2fr 90px auto', gap: '0.75rem', alignItems: 'end' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: logMode === 'quick_add' ? '1fr 1fr 2fr 100px auto' : '1fr 1fr 2fr 90px auto', gap: '0.75rem', alignItems: 'end' }}>
             <div className="form-group">
               <label>Date</label>
               <input type="date" className="form-input" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
@@ -108,7 +119,7 @@ export default function DailyTracking() {
               </select>
             </div>
             
-            {isQuickAdd ? (
+            {logMode === 'quick_add' ? (
               <>
                 <div className="form-group">
                   <label>Name</label>
@@ -117,6 +128,21 @@ export default function DailyTracking() {
                 <div className="form-group">
                   <label>Calories</label>
                   <input type="number" className="form-input" required value={form.quick_add_calories} onChange={e => setForm({...form, quick_add_calories: e.target.value})} placeholder="0" />
+                </div>
+              </>
+            ) : logMode === 'ingredient' ? (
+              <>
+                <div className="form-group">
+                  <label>Ingredient</label>
+                  <select className="form-input" value={form.ingredient_id} onChange={e => setForm({...form, ingredient_id: e.target.value})}>
+                    <option value="">Select ingredient...</option>
+                    {ingredients.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Weight(g)</label>
+                  <input type="number" step="0.1" min="1" className="form-input" style={{ textAlign: 'center' }}
+                    value={form.weight_g} onChange={e => setForm({...form, weight_g: e.target.value})} />
                 </div>
               </>
             ) : (
