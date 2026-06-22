@@ -13,9 +13,11 @@ export default function DailyTracking() {
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(true);
+  const [isQuickAdd, setIsQuickAdd] = useState(false);
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
-    meal_type: 'Breakfast', recipe_id: '', portions_eaten: '1'
+    meal_type: 'Breakfast', recipe_id: '', portions_eaten: '1',
+    quick_add_name: '', quick_add_calories: ''
   });
 
   async function fetchData() {
@@ -42,12 +44,18 @@ export default function DailyTracking() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.recipe_id) return;
-    const res = await fetch('/api/daily', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+    if (!isQuickAdd && !form.recipe_id) return;
+    
+    const payload = isQuickAdd 
+        ? { ...form, recipe_id: 'QUICK_ADD', portions_eaten: '1' } 
+        : form;
+
+    const res = await fetch('/api/daily', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (res.ok) { 
       const newLogs = await (await fetch('/api/daily')).json(); 
       setLogs(newLogs); 
       showToast('Meal logged');
+      setForm(f => ({ ...f, quick_add_name: '', quick_add_calories: '', recipe_id: '' }));
     }
   }
 
@@ -81,30 +89,52 @@ export default function DailyTracking() {
 
       {showForm && (
         <div className="card animate-slide-down">
-          <div className="section-label">Log a Meal</div>
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr 90px auto', gap: '0.75rem', alignItems: 'end' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+             <div className="section-label" style={{ margin: 0 }}>Log a Meal</div>
+             <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--surface2)', borderRadius: '99px', padding: '0.2rem' }}>
+                <button type="button" onClick={() => setIsQuickAdd(false)} className="btn" style={{ padding: '0.4rem 1rem', background: !isQuickAdd ? 'var(--card-bg)' : 'transparent', color: !isQuickAdd ? 'var(--text-main)' : 'var(--text-dim)', fontSize: '0.85rem', boxShadow: !isQuickAdd ? 'var(--shadow-sm)' : 'none', border: 'none' }}>Recipe</button>
+                <button type="button" onClick={() => setIsQuickAdd(true)} className="btn" style={{ padding: '0.4rem 1rem', background: isQuickAdd ? 'var(--card-bg)' : 'transparent', color: isQuickAdd ? 'var(--text-main)' : 'var(--text-dim)', fontSize: '0.85rem', boxShadow: isQuickAdd ? 'var(--shadow-sm)' : 'none', border: 'none' }}>Quick Add</button>
+             </div>
+          </div>
+          <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: isQuickAdd ? '1fr 1fr 2fr 100px auto' : '1fr 1fr 2fr 90px auto', gap: '0.75rem', alignItems: 'end' }}>
             <div className="form-group">
               <label>Date</label>
               <input type="date" className="form-input" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
             </div>
             <div className="form-group">
-              <label>Meal Type</label>
+              <label>Meal</label>
               <select className="form-input" value={form.meal_type} onChange={e => setForm({...form, meal_type: e.target.value})}>
                 {Object.keys(MEAL_ICONS).map(m => <option key={m}>{m}</option>)}
               </select>
             </div>
-            <div className="form-group">
-              <label>Recipe</label>
-              <select className="form-input" value={form.recipe_id} onChange={e => setForm({...form, recipe_id: e.target.value})}>
-                <option value="">Select recipe...</option>
-                {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Portions</label>
-              <input type="number" step="0.1" min="0.1" className="form-input" style={{ textAlign: 'center' }}
-                value={form.portions_eaten} onChange={e => setForm({...form, portions_eaten: e.target.value})} />
-            </div>
+            
+            {isQuickAdd ? (
+              <>
+                <div className="form-group">
+                  <label>Name</label>
+                  <input type="text" className="form-input" required value={form.quick_add_name} onChange={e => setForm({...form, quick_add_name: e.target.value})} placeholder="e.g. Eating out" />
+                </div>
+                <div className="form-group">
+                  <label>Calories</label>
+                  <input type="number" className="form-input" required value={form.quick_add_calories} onChange={e => setForm({...form, quick_add_calories: e.target.value})} placeholder="0" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="form-group">
+                  <label>Recipe</label>
+                  <select className="form-input" value={form.recipe_id} onChange={e => setForm({...form, recipe_id: e.target.value})}>
+                    <option value="">Select recipe...</option>
+                    {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Portions</label>
+                  <input type="number" step="0.1" min="0.1" className="form-input" style={{ textAlign: 'center' }}
+                    value={form.portions_eaten} onChange={e => setForm({...form, portions_eaten: e.target.value})} />
+                </div>
+              </>
+            )}
             <button type="submit" className="btn btn-primary" style={{ height: '44px' }}>Log</button>
           </form>
         </div>

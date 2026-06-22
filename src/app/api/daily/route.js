@@ -56,10 +56,43 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const { date, meal_type, recipe_id, portions_eaten } = await request.json();
-    if (!date || !recipe_id || isNaN(portions_eaten)) return NextResponse.json({error:'Invalid data'}, {status: 400});
+    const data = await request.json();
+    let { date, meal_type, recipe_id, portions_eaten, quick_add_name, quick_add_calories } = data;
+    
+    if (!date || isNaN(portions_eaten)) return NextResponse.json({error:'Invalid data'}, {status: 400});
 
     const db = await openDb();
+    
+    if (recipe_id === 'QUICK_ADD') {
+        if (!quick_add_name || isNaN(quick_add_calories)) return NextResponse.json({error:'Invalid quick add data'}, {status: 400});
+        
+        await db.exec('BEGIN TRANSACTION');
+        try {
+            // Create hidden ingredient
+            const ingResult = await db.run(`
+                INSERT INTO ingredients 
+                (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams) 
+                VALUES (?, 'Other', '', 'quick_add', ?, 0, 0, 0, null, '', null, null)`,
+                [quick_add_name, parseFloat(quick_add_calories)]
+            );
+            
+            // Create hidden recipe
+            const recResult = await db.run("INSERT INTO recipes (name, portions, status) VALUES (?, 1, 'quick_add')", [quick_add_name]);
+            recipe_id = recResult.lastID;
+            
+            // Link them
+            await db.run('INSERT INTO recipe_ingredients (recipe_id, ingredient_id, weight_g) VALUES (?, ?, 100)', 
+                [recipe_id, ingResult.lastID]);
+                
+            await db.exec('COMMIT');
+        } catch(err) {
+            await db.exec('ROLLBACK');
+            throw err;
+        }
+    } else if (!recipe_id) {
+        return NextResponse.json({error:'Invalid data'}, {status: 400});
+    }
+
     const res = await db.run('INSERT INTO daily_logs (date, meal_type, recipe_id, portions_eaten) VALUES (?, ?, ?, ?)', 
         [date, meal_type || 'Snack', recipe_id, parseFloat(portions_eaten)]);
     

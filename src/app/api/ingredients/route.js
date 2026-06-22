@@ -16,7 +16,7 @@ function optionalNumber(value) {
 export async function GET() {
   try {
     const db = await openDb();
-    const ingredients = await db.all('SELECT * FROM ingredients ORDER BY name ASC');
+    const ingredients = await db.all("SELECT * FROM ingredients WHERE status != 'quick_add' ORDER BY name ASC");
     return NextResponse.json(ingredients);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
