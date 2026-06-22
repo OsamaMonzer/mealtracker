@@ -1,6 +1,8 @@
 import { openDb } from '../../../lib/db';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const db = await openDb();
   const isPostgres = !!process.env.POSTGRES_URL;
