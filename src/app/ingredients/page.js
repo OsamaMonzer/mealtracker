@@ -357,11 +357,6 @@ export default function IngredientsPage() {
           <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-dim)' }}>
             <Carrot size={36} strokeWidth={1.5} style={{ marginBottom: '0.75rem', opacity: 0.5 }} />
             <p style={{ marginBottom: '1rem' }}>No ingredients found.</p>
-            {!search && filterCat === 'All' && (
-              <button className="btn btn-primary" onClick={seedIngredients} disabled={seeding}>
-                {seeding ? 'Loading...' : 'Load Starter Ingredients'}
-              </button>
-            )}
           </div>
         ) : (
           <table className="data-table" style={{ margin: 0 }}>
