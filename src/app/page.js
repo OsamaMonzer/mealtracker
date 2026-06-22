@@ -1,15 +1,164 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Carrot, BookOpen, UtensilsCrossed, Scale, TrendingDown, ChefHat, Flame, Beef, ChevronLeft, ChevronRight, X, Calendar } from 'lucide-react';
+import { Carrot, BookOpen, UtensilsCrossed, Scale, TrendingDown, ChefHat, Flame, Beef, ChevronLeft, ChevronRight, X, Calendar, ImageIcon, RefreshCw, Trash2 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime';
+import { showToast } from '../components/ToastContainer';
 
 const GOAL = 1800;
+
+// ── Photo Preview Modal (same as weight page) ──────────────────────────────
+function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [working, setWorking] = useState(false);
+  const replaceRef = useRef(null);
+
+  if (!log) return null;
+
+  const label = new Date(log.date + 'T12:00:00').toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+  });
+
+  async function handleDeletePhoto() {
+    setWorking(true);
+    await onDeletePhoto(log);
+    setWorking(false);
+    onClose();
+  }
+
+  async function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setWorking(true);
+    await onReplacePhoto(log, file);
+    setWorking(false);
+    onClose();
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.85)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.5rem',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#fff',
+          borderRadius: '20px',
+          maxWidth: '480px',
+          width: '100%',
+          overflow: 'hidden',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+        }}
+      >
+        <div style={{ position: 'relative' }}>
+          <img
+            src={log.photo_url}
+            alt={`Progress photo ${label}`}
+            style={{ width: '100%', display: 'block', maxHeight: '65vh', objectFit: 'cover' }}
+          />
+          <button
+            onClick={onClose}
+            style={{
+              position: 'absolute', top: '0.75rem', right: '0.75rem',
+              background: 'rgba(0,0,0,0.5)', border: 'none',
+              borderRadius: '50%', width: '36px', height: '36px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', color: '#fff',
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ padding: '1rem 1.25rem 0.5rem' }}>
+          <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.2rem', color: '#111' }}>{label}</div>
+          <div style={{ fontSize: '0.85rem', color: '#999', marginTop: '0.2rem' }}>{log.weight_kg} kg</div>
+        </div>
+
+        <div style={{ padding: '0.5rem 1.25rem 1.25rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <input
+            ref={replaceRef}
+            type="file"
+            accept="image/*"
+            capture="user"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+            id="home-replace-photo-input"
+          />
+          <label
+            htmlFor="home-replace-photo-input"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.4rem',
+              background: 'var(--surface2, #f3f4f6)',
+              border: '1px solid var(--border, #e5e7eb)',
+              borderRadius: '10px', padding: '0.55rem 1rem',
+              cursor: working ? 'not-allowed' : 'pointer',
+              fontSize: '0.85rem', fontWeight: 600,
+              color: 'var(--text-main, #111)',
+              opacity: working ? 0.5 : 1,
+              flex: 1, justifyContent: 'center',
+            }}
+          >
+            <RefreshCw size={14} />
+            {working ? 'Working…' : 'Replace Photo'}
+          </label>
+
+          {!confirmDelete ? (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={working}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                background: '#fff0f0',
+                border: '1px solid #fca5a5',
+                borderRadius: '10px', padding: '0.55rem 1rem',
+                cursor: working ? 'not-allowed' : 'pointer',
+                fontSize: '0.85rem', fontWeight: 600,
+                color: '#dc2626',
+                flex: 1, justifyContent: 'center',
+              }}
+            >
+              <Trash2 size={14} />
+              Delete Photo
+            </button>
+          ) : (
+            <button
+              onClick={handleDeletePhoto}
+              disabled={working}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                background: '#dc2626',
+                border: 'none',
+                borderRadius: '10px', padding: '0.55rem 1rem',
+                cursor: working ? 'not-allowed' : 'pointer',
+                fontSize: '0.85rem', fontWeight: 600,
+                color: '#fff',
+                flex: 1, justifyContent: 'center',
+              }}
+            >
+              <Trash2 size={14} />
+              {working ? 'Deleting…' : 'Confirm Delete'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Day History Modal ──────────────────────────────────────────────────────
 function DayModal({ date, onClose }) {
@@ -67,12 +216,10 @@ function DayModal({ date, onClose }) {
           position: 'relative',
         }}
       >
-        {/* Handle */}
         <div style={{ display: 'flex', justifyContent: 'center', padding: '0.75rem 0 0', background: '#ffffff' }}>
           <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: '#e0e0e0' }} />
         </div>
 
-        {/* Header */}
         <div style={{ padding: '1rem 1.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #efefef', background: '#ffffff' }}>
           <div>
             <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -85,7 +232,6 @@ function DayModal({ date, onClose }) {
           </button>
         </div>
 
-        {/* Totals bar */}
         {dayData?.totals && (
           <div style={{ display: 'flex', borderBottom: '1px solid #efefef', background: '#fafafa' }}>
             {[
@@ -102,7 +248,6 @@ function DayModal({ date, onClose }) {
           </div>
         )}
 
-        {/* Scrollable content */}
         <div style={{ overflowY: 'auto', flex: 1, padding: '1rem 1.5rem 2rem', background: '#ffffff' }}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: '#999', fontSize: '0.9rem' }}>Loading…</div>
@@ -144,6 +289,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(null);
   const [viewingDate, setViewingDate] = useState(null);
+  const [photoLog, setPhotoLog] = useState(null);
 
   const todayStr = new Date().toISOString().split('T')[0];
   const hour = new Date().getHours();
@@ -167,10 +313,53 @@ export default function Home() {
     fetchDashboard
   );
 
+  // Weight photo handlers (mirrors weight page)
+  async function uploadPhoto(file, date) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('date', date);
+    const res = await fetch('/api/weight/photo', { method: 'POST', body: fd });
+    const json = await res.json();
+    return json.url || null;
+  }
+
+  async function handleDeletePhoto(log) {
+    await fetch('/api/weight/photo', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_url: log.photo_url }),
+    });
+    await fetch(`/api/weight/${log.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_url: null }),
+    });
+    fetchDashboard();
+    showToast('Photo deleted');
+  }
+
+  async function handleReplacePhoto(log, file) {
+    if (log.photo_url) {
+      await fetch('/api/weight/photo', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photo_url: log.photo_url }),
+      });
+    }
+    const newUrl = await uploadPhoto(file, log.date);
+    if (!newUrl) { showToast('Upload failed', 'error'); return; }
+    await fetch(`/api/weight/${log.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_url: newUrl }),
+    });
+    fetchDashboard();
+    showToast('Photo replaced ✓');
+  }
+
   const allDates = data?.allDates || [];
   const selectedIdx = allDates.indexOf(selectedDate);
 
-  // Navigate purely by position in allDates array — works for past AND future pre-logged dates
   const canGoPrev = selectedIdx > 0;
   const canGoNext = selectedIdx !== -1 && selectedIdx < allDates.length - 1;
 
@@ -188,9 +377,7 @@ export default function Home() {
   const selectedLabel = selectedDate
     ? isToday
       ? 'Today'
-      : isFuture
-        ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-        : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
     : 'Today';
 
   const chartEntry = data?.chartData?.find(c => c.date === selectedDate);
@@ -198,9 +385,47 @@ export default function Home() {
     ? { cals: chartEntry.Calories, p: '—', c: '—', f: '—' }
     : data?.todayMacros;
 
+  // Custom dot for weight chart: filled accent if has photo
+  function WeightDot({ cx, cy, payload }) {
+    if (!payload?.hasPhoto) {
+      return <circle cx={cx} cy={cy} r={4} stroke="var(--accent)" strokeWidth={2} fill="white" />;
+    }
+    return (
+      <g style={{ cursor: 'pointer' }}>
+        <circle cx={cx} cy={cy} r={7} fill="var(--accent)" opacity={0.15} />
+        <circle cx={cx} cy={cy} r={4} stroke="var(--accent)" strokeWidth={2} fill="var(--accent)" />
+      </g>
+    );
+  }
+
+  // Custom tooltip for weight chart
+  function WeightTooltip({ active, payload }) {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.6rem 0.9rem', fontSize: '0.82rem', fontFamily: 'Plus Jakarta Sans', boxShadow: 'var(--shadow-md)' }}>
+        <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>{d.name}</div>
+        <div style={{ color: 'var(--accent)', fontWeight: 600 }}>{d.Weight} kg</div>
+        {d.hasPhoto && (
+          <div style={{ color: 'var(--accent)', fontSize: '0.75rem', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <ImageIcon size={11} /> Tap to view photo
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <main>
       {viewingDate && <DayModal date={viewingDate} onClose={() => setViewingDate(null)} />}
+      {photoLog && (
+        <PhotoModal
+          log={photoLog}
+          onClose={() => setPhotoLog(null)}
+          onDeletePhoto={handleDeletePhoto}
+          onReplacePhoto={handleReplacePhoto}
+        />
+      )}
 
       {/* Header */}
       <div style={{ marginBottom: '3rem' }}>
@@ -382,18 +607,35 @@ export default function Home() {
             </div>
 
             <div className="card animate-fade-up stagger-5" style={{ height: '280px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '1.5rem' }}>
-                <TrendingDown size={14} color="var(--text-dim)" />
-                <span className="section-label" style={{ margin: 0 }}>Weight Trend</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '1.5rem', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <TrendingDown size={14} color="var(--text-dim)" />
+                  <span className="section-label" style={{ margin: 0 }}>Weight Trend</span>
+                </div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>● = has photo</span>
               </div>
               {data.weightLogData && data.weightLogData.length > 1 ? (
                 <ResponsiveContainer width="100%" height="80%">
-                  <LineChart data={data.weightLogData}>
+                  <LineChart
+                    data={data.weightLogData}
+                    onClick={d => {
+                      if (d?.activePayload?.[0]?.payload?.hasPhoto)
+                        setPhotoLog(d.activePayload[0].payload.fullLog);
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-dim)', fontFamily: 'Plus Jakarta Sans' }} />
                     <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false} width={34} tick={{ fontSize: 11, fill: 'var(--text-dim)' }} />
-                    <Tooltip contentStyle={{ background: 'white', border: '1px solid var(--border)', borderRadius: '10px', fontFamily: 'Plus Jakarta Sans', fontSize: '0.82rem', boxShadow: 'var(--shadow-md)' }} />
-                    <Line type="monotone" dataKey="Weight" stroke="var(--accent)" strokeWidth={2.5} dot={{ stroke: 'var(--accent)', fill: 'white', r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                    <Tooltip content={<WeightTooltip />} />
+                    <Line
+                      type="monotone"
+                      dataKey="Weight"
+                      stroke="var(--accent)"
+                      strokeWidth={2.5}
+                      dot={<WeightDot />}
+                      activeDot={{ r: 6 }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
