@@ -7,16 +7,13 @@ export async function GET() {
   try {
     const db = await openDb();
 
-    // Recipes count
     const { count } = await db.get('SELECT COUNT(*) as count FROM recipes') || { count: 0 };
 
-    // Weight logic
     const weights = await db.all('SELECT * FROM weight_logs ORDER BY date ASC');
     const startingWeight = weights.length > 0 ? weights[0].weight_kg : null;
     const currentWeight = weights.length > 0 ? weights[weights.length - 1].weight_kg : null;
     const weightChange = startingWeight && currentWeight ? (currentWeight - startingWeight).toFixed(1) : 0;
 
-    // Daily tracking logic
     const logs = await db.all(`
       SELECT d.date, d.portions_eaten, r.portions as recipe_portions, d.recipe_id
       FROM daily_logs d
@@ -55,12 +52,19 @@ export async function GET() {
     const todayDate = new Date().toISOString().split('T')[0];
     const todayMacros = dailyHash[todayDate] || { cals: 0, p: 0, c: 0, f: 0 };
 
-    const dates = Object.keys(dailyHash).sort().slice(-7);
-    const weeklyAvgCals = dates.length > 0 ? dates.reduce((acc, d) => acc + dailyHash[d].cals, 0) / dates.length : 0;
+    // All sorted dates for history navigation
+    const allDates = Object.keys(dailyHash).sort();
+    const last7 = allDates.slice(-7);
+    const weeklyAvgCals = last7.length > 0
+      ? last7.reduce((acc, d) => acc + dailyHash[d].cals, 0) / last7.length
+      : 0;
 
-    const chartData = dates.map(d => ({
-      name: new Date(d).toLocaleDateString('en-US', { weekday: 'short' }),
-      Calories: dailyHash[d].cals
+    // Chart: last 30 days with actual date key
+    const last30 = allDates.slice(-30);
+    const chartData = last30.map(d => ({
+      name: new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      date: d,
+      Calories: Math.round(dailyHash[d].cals),
     }));
 
     return NextResponse.json({
@@ -76,9 +80,12 @@ export async function GET() {
       },
       weeklyAvgCals: Math.round(weeklyAvgCals),
       chartData,
-      weightLogData: weights.slice(-7).map(w => ({ name: new Date(w.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }), Weight: w.weight_kg }))
+      allDates,
+      weightLogData: weights.slice(-14).map(w => ({
+        name: new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+        Weight: w.weight_kg,
+      })),
     });
-
   } catch (error) {
     console.error('API Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
