@@ -169,30 +169,34 @@ export default function Home() {
 
   const allDates = data?.allDates || [];
   const selectedIdx = allDates.indexOf(selectedDate);
+
+  // Navigate purely by position in allDates array — works for past AND future pre-logged dates
   const canGoPrev = selectedIdx > 0;
-  const canGoNext = selectedDate && selectedDate < todayStr;
+  const canGoNext = selectedIdx !== -1 && selectedIdx < allDates.length - 1;
 
   function goPrev() {
-    if (selectedIdx > 0) setSelectedDate(allDates[selectedIdx - 1]);
+    if (canGoPrev) setSelectedDate(allDates[selectedIdx - 1]);
   }
 
   function goNext() {
-    if (selectedIdx < allDates.length - 1) setSelectedDate(allDates[selectedIdx + 1]);
-    else if (selectedDate < todayStr) setSelectedDate(todayStr);
+    if (canGoNext) setSelectedDate(allDates[selectedIdx + 1]);
   }
 
+  const isFuture = selectedDate && selectedDate > todayStr;
+  const isToday = selectedDate === todayStr;
+
   const selectedLabel = selectedDate
-    ? selectedDate === todayStr
+    ? isToday
       ? 'Today'
-      : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      : isFuture
+        ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
     : 'Today';
 
   const chartEntry = data?.chartData?.find(c => c.date === selectedDate);
-  const displayMacros = selectedDate && selectedDate !== todayStr && chartEntry
+  const displayMacros = selectedDate && !isToday && chartEntry
     ? { cals: chartEntry.Calories, p: '—', c: '—', f: '—' }
     : data?.todayMacros;
-
-  const isToday = selectedDate === todayStr;
 
   return (
     <main>
@@ -234,7 +238,14 @@ export default function Home() {
                 </button>
                 <button
                   onClick={() => setViewingDate(selectedDate)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'var(--surface2)', border: 'none', borderRadius: '8px', padding: '4px 10px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', color: 'var(--text-main)' }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                    background: isFuture ? '#fff8e1' : 'var(--surface2)',
+                    border: isFuture ? '1px solid #f59e0b' : 'none',
+                    borderRadius: '8px', padding: '4px 10px', fontSize: '0.8rem',
+                    fontWeight: 600, cursor: 'pointer',
+                    color: isFuture ? '#b45309' : 'var(--text-main)'
+                  }}
                 >
                   <Calendar size={13} />
                   {selectedLabel}
