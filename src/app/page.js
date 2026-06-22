@@ -41,79 +41,91 @@ function DayModal({ date, onClose }) {
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
-        zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-        backdropFilter: 'blur(4px)'
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.6)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+        backdropFilter: 'blur(3px)',
+        WebkitBackdropFilter: 'blur(3px)',
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: 'var(--surface1)', borderRadius: '20px 20px 0 0',
-          width: '100%', maxWidth: '640px', maxHeight: '85vh',
-          overflow: 'hidden', display: 'flex', flexDirection: 'column',
-          boxShadow: '0 -8px 40px rgba(0,0,0,0.25)'
+          background: '#ffffff',
+          borderRadius: '20px 20px 0 0',
+          width: '100%',
+          maxWidth: '640px',
+          maxHeight: '88vh',
+          minHeight: '200px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 -8px 48px rgba(0,0,0,0.3)',
+          position: 'relative',
         }}
       >
         {/* Handle */}
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '0.75rem 0 0' }}>
-          <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: 'var(--border)' }} />
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '0.75rem 0 0', background: '#ffffff' }}>
+          <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: '#e0e0e0' }} />
         </div>
 
         {/* Header */}
-        <div style={{ padding: '1rem 1.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '1rem 1.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #efefef', background: '#ffffff' }}>
           <div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               {isToday ? 'Today' : 'History'}
             </div>
-            <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.4rem', lineHeight: 1.2 }}>{label}</div>
+            <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.4rem', lineHeight: 1.2, color: '#111' }}>{label}</div>
           </div>
-          <button onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-dim)' }}>
+          <button onClick={onClose} style={{ background: '#f3f3f3', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#666', flexShrink: 0 }}>
             <X size={16} />
           </button>
         </div>
 
         {/* Totals bar */}
         {dayData?.totals && (
-          <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid #efefef', background: '#fafafa' }}>
             {[
-              { label: 'Calories', val: dayData.totals.cals, unit: 'kcal', color: dayData.totals.cals > GOAL ? 'var(--red)' : 'var(--accent)' },
-              { label: 'Protein', val: dayData.totals.p + 'g', color: 'var(--blue)' },
-              { label: 'Carbs', val: dayData.totals.c + 'g', color: 'var(--gold)' },
-              { label: 'Fat', val: dayData.totals.f + 'g', color: 'var(--red)' },
+              { label: 'Calories', val: dayData.totals.cals, color: dayData.totals.cals > GOAL ? '#e53935' : '#2e7d32' },
+              { label: 'Protein', val: dayData.totals.p + 'g', color: '#1565c0' },
+              { label: 'Carbs', val: dayData.totals.c + 'g', color: '#e65100' },
+              { label: 'Fat', val: dayData.totals.f + 'g', color: '#c62828' },
             ].map((s, i) => (
-              <div key={i} style={{ flex: 1, padding: '0.75rem 0.5rem', textAlign: 'center', borderRight: i < 3 ? '1px solid var(--border)' : 'none' }}>
+              <div key={i} style={{ flex: 1, padding: '0.75rem 0.5rem', textAlign: 'center', borderRight: i < 3 ? '1px solid #efefef' : 'none' }}>
                 <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.3rem', color: s.color, lineHeight: 1 }}>{s.val}</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>{s.label}</div>
+                <div style={{ fontSize: '0.7rem', color: '#999', marginTop: '0.2rem' }}>{s.label}</div>
               </div>
             ))}
           </div>
         )}
 
         {/* Scrollable content */}
-        <div style={{ overflowY: 'auto', flex: 1, padding: '1rem 1.5rem 2rem' }}>
+        <div style={{ overflowY: 'auto', flex: 1, padding: '1rem 1.5rem 2rem', background: '#ffffff' }}>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)', fontSize: '0.9rem' }}>Loading…</div>
+            <div style={{ textAlign: 'center', padding: '3rem', color: '#999', fontSize: '0.9rem' }}>Loading…</div>
           ) : !dayData?.logs?.length ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)', fontSize: '0.9rem' }}>
-              <Beef size={32} strokeWidth={1.5} style={{ margin: '0 auto 0.75rem' }} />
+            <div style={{ textAlign: 'center', padding: '3rem', color: '#999', fontSize: '0.9rem' }}>
+              <Beef size={32} strokeWidth={1.5} style={{ margin: '0 auto 0.75rem', color: '#ccc' }} />
               No meals logged this day
             </div>
           ) : (
             Object.entries(mealGroups).map(([mealType, meals]) => (
               <div key={mealType} style={{ marginBottom: '1.5rem' }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-dim)', marginBottom: '0.6rem' }}>{mealType}</div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#999', marginBottom: '0.6rem' }}>{mealType}</div>
                 {meals.map(log => (
-                  <div key={log.id} style={{ background: 'var(--surface2)', borderRadius: '12px', padding: '0.9rem 1rem', marginBottom: '0.5rem' }}>
+                  <div key={log.id} style={{ background: '#f7f7f7', borderRadius: '12px', padding: '0.9rem 1rem', marginBottom: '0.5rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem', flex: 1, marginRight: '0.5rem' }}>{log.recipe_name}</div>
-                      <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem', color: 'var(--accent)', whiteSpace: 'nowrap' }}>{log.calories} kcal</div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem', flex: 1, marginRight: '0.5rem', color: '#111' }}>{log.recipe_name}</div>
+                      <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem', color: '#2e7d32', whiteSpace: 'nowrap' }}>{log.calories} kcal</div>
                     </div>
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.4rem', fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                      <span style={{ color: 'var(--blue)' }}>P {log.protein}g</span>
-                      <span style={{ color: 'var(--gold)' }}>C {log.carbs}g</span>
-                      <span style={{ color: 'var(--red)' }}>F {log.fat}g</span>
-                      <span style={{ marginLeft: 'auto' }}>{log.portions_eaten} {log.portions_eaten === 1 ? 'portion' : 'portions'}</span>
+                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.4rem', fontSize: '0.78rem' }}>
+                      <span style={{ color: '#1565c0' }}>P {log.protein}g</span>
+                      <span style={{ color: '#e65100' }}>C {log.carbs}g</span>
+                      <span style={{ color: '#c62828' }}>F {log.fat}g</span>
+                      <span style={{ marginLeft: 'auto', color: '#999' }}>{log.portions_eaten} {log.portions_eaten === 1 ? 'portion' : 'portions'}</span>
                     </div>
                   </div>
                 ))}
@@ -131,7 +143,7 @@ export default function Home() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(null);
-  const [viewingDate, setViewingDate] = useState(null); // date string for modal
+  const [viewingDate, setViewingDate] = useState(null);
 
   const todayStr = new Date().toISOString().split('T')[0];
   const hour = new Date().getHours();
@@ -144,11 +156,8 @@ export default function Home() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => {
-    fetchDashboard();
-  }, []);
+  useEffect(() => { fetchDashboard(); }, []);
 
-  // Set viewing date to today by default after load
   useEffect(() => {
     if (data && !selectedDate) setSelectedDate(todayStr);
   }, [data]);
@@ -158,7 +167,6 @@ export default function Home() {
     fetchDashboard
   );
 
-  // Navigate dates
   const allDates = data?.allDates || [];
   const selectedIdx = allDates.indexOf(selectedDate);
   const canGoPrev = selectedIdx > 0;
@@ -179,13 +187,11 @@ export default function Home() {
       : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
     : 'Today';
 
-  // Find macros for selected date
   const chartEntry = data?.chartData?.find(c => c.date === selectedDate);
   const displayMacros = selectedDate && selectedDate !== todayStr && chartEntry
     ? { cals: chartEntry.Calories, p: '—', c: '—', f: '—' }
     : data?.todayMacros;
 
-  // For non-today: fetch via history modal but show summary inline
   const isToday = selectedDate === todayStr;
 
   return (
@@ -217,13 +223,11 @@ export default function Home() {
         <>
           {/* Today's Intake Card */}
           <div className="card animate-fade-up stagger-1">
-            {/* Header row with date navigator */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Flame size={16} color="var(--accent)" strokeWidth={2} />
                 <span className="section-label" style={{ margin: 0 }}>Intake</span>
               </div>
-              {/* Date navigator */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <button onClick={goPrev} disabled={!canGoPrev} style={{ background: 'none', border: 'none', cursor: canGoPrev ? 'pointer' : 'default', color: canGoPrev ? 'var(--text-main)' : 'var(--border)', padding: '4px', display: 'flex' }}>
                   <ChevronLeft size={18} />
@@ -241,7 +245,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Goal + Log link */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Goal: {GOAL} kcal</div>
               {isToday && (
