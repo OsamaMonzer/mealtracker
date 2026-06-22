@@ -2,17 +2,39 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Scale, TrendingDown, TrendingUp, Minus, Trash2, Camera, X, ImageIcon, Bell } from 'lucide-react';
+import { ArrowLeft, Scale, TrendingDown, TrendingUp, Minus, Trash2, Camera, X, ImageIcon, Bell, RefreshCw, Upload } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { showToast } from '../../components/ToastContainer';
 import { useSupabaseRealtime } from '../../hooks/useSupabaseRealtime';
 
 // ── Photo Preview Modal ────────────────────────────────────────────────────
-function PhotoModal({ log, onClose }) {
+function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [working, setWorking] = useState(false);
+  const replaceRef = useRef(null);
+
   if (!log) return null;
+
   const label = new Date(log.date + 'T12:00:00').toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
+
+  async function handleDeletePhoto() {
+    setWorking(true);
+    await onDeletePhoto(log);
+    setWorking(false);
+    onClose();
+  }
+
+  async function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setWorking(true);
+    await onReplacePhoto(log, file);
+    setWorking(false);
+    onClose();
+  }
+
   return (
     <div
       onClick={onClose}
@@ -37,11 +59,12 @@ function PhotoModal({ log, onClose }) {
           boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
         }}
       >
+        {/* Photo */}
         <div style={{ position: 'relative' }}>
           <img
             src={log.photo_url}
             alt={`Progress photo ${label}`}
-            style={{ width: '100%', display: 'block', maxHeight: '70vh', objectFit: 'cover' }}
+            style={{ width: '100%', display: 'block', maxHeight: '65vh', objectFit: 'cover' }}
           />
           <button
             onClick={onClose}
@@ -56,9 +79,83 @@ function PhotoModal({ log, onClose }) {
             <X size={18} />
           </button>
         </div>
-        <div style={{ padding: '1rem 1.25rem' }}>
+
+        {/* Info */}
+        <div style={{ padding: '1rem 1.25rem 0.5rem' }}>
           <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.2rem', color: '#111' }}>{label}</div>
           <div style={{ fontSize: '0.85rem', color: '#999', marginTop: '0.2rem' }}>{log.weight_kg} kg</div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ padding: '0.5rem 1.25rem 1.25rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {/* Hidden file input for replace */}
+          <input
+            ref={replaceRef}
+            type="file"
+            accept="image/*"
+            capture="user"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+            id="replace-photo-input"
+          />
+
+          {/* Reupload button */}
+          <label
+            htmlFor="replace-photo-input"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.4rem',
+              background: 'var(--surface2, #f3f4f6)',
+              border: '1px solid var(--border, #e5e7eb)',
+              borderRadius: '10px', padding: '0.55rem 1rem',
+              cursor: working ? 'not-allowed' : 'pointer',
+              fontSize: '0.85rem', fontWeight: 600,
+              color: 'var(--text-main, #111)',
+              opacity: working ? 0.5 : 1,
+              flex: 1, justifyContent: 'center',
+            }}
+          >
+            <RefreshCw size={14} />
+            {working ? 'Working…' : 'Replace Photo'}
+          </label>
+
+          {/* Delete photo only */}
+          {!confirmDelete ? (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={working}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                background: '#fff0f0',
+                border: '1px solid #fca5a5',
+                borderRadius: '10px', padding: '0.55rem 1rem',
+                cursor: working ? 'not-allowed' : 'pointer',
+                fontSize: '0.85rem', fontWeight: 600,
+                color: '#dc2626',
+                flex: 1, justifyContent: 'center',
+              }}
+            >
+              <Trash2 size={14} />
+              Delete Photo
+            </button>
+          ) : (
+            <button
+              onClick={handleDeletePhoto}
+              disabled={working}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                background: '#dc2626',
+                border: 'none',
+                borderRadius: '10px', padding: '0.55rem 1rem',
+                cursor: working ? 'not-allowed' : 'pointer',
+                fontSize: '0.85rem', fontWeight: 600,
+                color: '#fff',
+                flex: 1, justifyContent: 'center',
+              }}
+            >
+              <Trash2 size={14} />
+              {working ? 'Deleting…' : 'Confirm Delete'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -67,9 +164,9 @@ function PhotoModal({ log, onClose }) {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function WeightTracking() {
-  const [logs, setLogs]         = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [photoLog, setPhotoLog] = useState(null); // log selected for photo preview
+  const [logs, setLogs]           = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [photoLog, setPhotoLog]   = useState(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
   const goalWeight = 75;
@@ -81,7 +178,6 @@ export default function WeightTracking() {
     photoPreview: null,
   });
 
-  // ── Friday banner logic ──────────────────────────────────────────────────
   const todayStr = new Date().toISOString().split('T')[0];
   const isFriday = new Date().getDay() === 5;
   const todayLog = logs.find(l => l.date === todayStr);
@@ -98,11 +194,16 @@ export default function WeightTracking() {
   function handlePhotoSelect(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setForm(f => ({
-      ...f,
-      photoFile: file,
-      photoPreview: URL.createObjectURL(file),
-    }));
+    setForm(f => ({ ...f, photoFile: file, photoPreview: URL.createObjectURL(file) }));
+  }
+
+  async function uploadPhoto(file, date) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('date', date);
+    const res = await fetch('/api/weight/photo', { method: 'POST', body: fd });
+    const json = await res.json();
+    return json.url || null;
   }
 
   async function handleSubmit(e) {
@@ -111,19 +212,11 @@ export default function WeightTracking() {
     setUploading(true);
 
     let photo_url = null;
-
-    // Upload photo first if selected
     if (form.photoFile) {
-      const fd = new FormData();
-      fd.append('file', form.photoFile);
-      fd.append('date', form.date);
-      const res = await fetch('/api/weight/photo', { method: 'POST', body: fd });
-      const json = await res.json();
-      if (json.url) photo_url = json.url;
-      else showToast('Photo upload failed — weight saved without photo', 'error');
+      photo_url = await uploadPhoto(form.photoFile, form.date);
+      if (!photo_url) showToast('Photo upload failed — weight saved without photo', 'error');
     }
 
-    // Save weight + photo URL
     const res = await fetch('/api/weight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -146,6 +239,60 @@ export default function WeightTracking() {
     showToast('Log deleted');
   }
 
+  // Delete photo only (keep the weight row)
+  async function handleDeletePhoto(log) {
+    // Delete from storage
+    await fetch('/api/weight/photo', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_url: log.photo_url }),
+    });
+    // Null out photo_url in the DB row
+    await fetch(`/api/weight/${log.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_url: null }),
+    });
+    fetchLogs();
+    showToast('Photo deleted');
+  }
+
+  // Replace photo: delete old from storage, upload new, update row
+  async function handleReplacePhoto(log, file) {
+    // Delete old photo from storage if exists
+    if (log.photo_url) {
+      await fetch('/api/weight/photo', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photo_url: log.photo_url }),
+      });
+    }
+    // Upload new
+    const newUrl = await uploadPhoto(file, log.date);
+    if (!newUrl) { showToast('Upload failed', 'error'); return; }
+    // Update row
+    await fetch(`/api/weight/${log.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_url: newUrl }),
+    });
+    fetchLogs();
+    showToast('Photo replaced ✓');
+  }
+
+  // For rows without a photo: upload one directly from table
+  async function handleAddPhotoToExisting(log, file) {
+    const newUrl = await uploadPhoto(file, log.date);
+    if (!newUrl) { showToast('Upload failed', 'error'); return; }
+    await fetch(`/api/weight/${log.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_url: newUrl }),
+    });
+    fetchLogs();
+    showToast('Photo added ✓');
+  }
+
   const sorted  = [...logs].sort((a, b) => new Date(a.date) - new Date(b.date));
   const startW  = sorted[0]?.weight_kg ?? null;
   const latestW = sorted[sorted.length - 1]?.weight_kg ?? null;
@@ -164,11 +311,52 @@ export default function WeightTracking() {
   const chartData = sorted.slice(-20).map(L => ({
     name: new Date(L.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     Weight: L.weight_kg,
+    hasPhoto: !!L.photo_url,
+    fullLog: L,
   }));
+
+  // Custom dot for chart: camera icon tinted if photo exists
+  function CustomDot({ cx, cy, payload }) {
+    if (!payload?.hasPhoto) {
+      return <circle cx={cx} cy={cy} r={4} stroke="var(--accent)" strokeWidth={2} fill="white" />;
+    }
+    return (
+      <g>
+        <circle cx={cx} cy={cy} r={7} fill="var(--accent)" opacity={0.15} />
+        <circle cx={cx} cy={cy} r={4} stroke="var(--accent)" strokeWidth={2} fill="var(--accent)" />
+      </g>
+    );
+  }
+
+  function CustomTooltip({ active, payload }) {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.6rem 0.9rem', fontSize: '0.82rem', fontFamily: 'Plus Jakarta Sans', boxShadow: 'var(--shadow-md)' }}>
+        <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>{d.name}</div>
+        <div style={{ color: 'var(--accent)', fontWeight: 600 }}>{d.Weight} kg</div>
+        {d.hasPhoto && (
+          <div
+            style={{ color: 'var(--accent)', fontSize: '0.75rem', marginTop: '0.25rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+            onClick={() => setPhotoLog(d.fullLog)}
+          >
+            <ImageIcon size={11} /> View photo
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <main>
-      {photoLog && <PhotoModal log={photoLog} onClose={() => setPhotoLog(null)} />}
+      {photoLog && (
+        <PhotoModal
+          log={photoLog}
+          onClose={() => setPhotoLog(null)}
+          onDeletePhoto={handleDeletePhoto}
+          onReplacePhoto={handleReplacePhoto}
+        />
+      )}
 
       <div className="page-header" style={{ marginBottom: '2.5rem' }}>
         <div>
@@ -180,27 +368,15 @@ export default function WeightTracking() {
         <Link href="/" className="btn" style={{ marginTop: '0.5rem' }}><ArrowLeft size={15} /> Home</Link>
       </div>
 
-      {/* Friday Banner — sticky, won't dismiss until weight + photo are logged today */}
       {showFridayBanner && (
-        <div
-          style={{
-            background: 'linear-gradient(135deg, #fff8e1 0%, #fff3cd 100%)',
-            border: '1.5px solid #f59e0b',
-            borderRadius: '16px',
-            padding: '1rem 1.25rem',
-            marginBottom: '1.5rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.85rem',
-          }}
-        >
+        <div style={{ background: 'linear-gradient(135deg, #fff8e1 0%, #fff3cd 100%)', border: '1.5px solid #f59e0b', borderRadius: '16px', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
           <div style={{ background: '#f59e0b', borderRadius: '50%', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Bell size={18} color="#fff" />
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#92400e' }}>📸 Friday Check-in</div>
             <div style={{ fontSize: '0.8rem', color: '#b45309', marginTop: '0.15rem' }}>
-              {!todayLog ? "Log today's weight with a progress photo!" : "You logged weight — add a photo to complete your check-in!"}
+              {!todayLog ? "Log today's weight with a progress photo!" : 'You logged weight — add a photo to complete your check-in!'}
             </div>
           </div>
         </div>
@@ -261,56 +437,23 @@ export default function WeightTracking() {
             </div>
           </div>
 
-          {/* Photo upload */}
           <div style={{ marginBottom: '1rem' }}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="user"
-              style={{ display: 'none' }}
-              onChange={handlePhotoSelect}
-              id="weight-photo-input"
-            />
-
+            <input ref={fileInputRef} type="file" accept="image/*" capture="user" style={{ display: 'none' }}
+              onChange={handlePhotoSelect} id="weight-photo-input" />
             {!form.photoPreview ? (
-              <label
-                htmlFor="weight-photo-input"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '0.6rem',
-                  background: 'var(--surface2)', border: '1.5px dashed var(--border)',
-                  borderRadius: '12px', padding: '0.85rem 1.2rem',
-                  cursor: 'pointer', color: 'var(--text-sub)', fontSize: '0.875rem', fontWeight: 500,
-                }}
-              >
+              <label htmlFor="weight-photo-input" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'var(--surface2)', border: '1.5px dashed var(--border)', borderRadius: '12px', padding: '0.85rem 1.2rem', cursor: 'pointer', color: 'var(--text-sub)', fontSize: '0.875rem', fontWeight: 500 }}>
                 <Camera size={18} color="var(--accent)" />
                 Add progress photo (optional)
               </label>
             ) : (
               <div style={{ position: 'relative', display: 'inline-block' }}>
-                <img
-                  src={form.photoPreview}
-                  alt="Preview"
-                  style={{ width: '100px', height: '100px', objectFit: 'cover', borderRadius: '12px', display: 'block' }}
-                />
-                <button
-                  type="button"
+                <img src={form.photoPreview} alt="Preview" style={{ width: '100px', height: '100px', objectFit: 'cover', borderRadius: '12px', display: 'block' }} />
+                <button type="button"
                   onClick={() => { setForm(f => ({ ...f, photoFile: null, photoPreview: null })); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-                  style={{
-                    position: 'absolute', top: '-8px', right: '-8px',
-                    background: '#ef4444', border: 'none', borderRadius: '50%',
-                    width: '24px', height: '24px', cursor: 'pointer', color: '#fff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
+                  style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ef4444', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <X size={13} />
                 </button>
-                <label
-                  htmlFor="weight-photo-input"
-                  style={{ display: 'block', textAlign: 'center', fontSize: '0.75rem', color: 'var(--accent)', marginTop: '0.35rem', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  Change
-                </label>
+                <label htmlFor="weight-photo-input" style={{ display: 'block', textAlign: 'center', fontSize: '0.75rem', color: 'var(--accent)', marginTop: '0.35rem', cursor: 'pointer', fontWeight: 600 }}>Change</label>
               </div>
             )}
           </div>
@@ -321,15 +464,16 @@ export default function WeightTracking() {
         </form>
       </div>
 
-      {/* Chart */}
+      {/* Chart — dots are highlighted if photo exists, clicking tooltip opens photo */}
       {chartData.length > 1 && (
         <div className="card animate-fade-up" style={{ height: '290px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
             <TrendingDown size={14} color="var(--text-dim)" />
             <span className="section-label" style={{ margin: 0 }}>Weight Trend</span>
+            <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-dim)' }}>● = has photo</span>
           </div>
           <ResponsiveContainer width="100%" height="82%">
-            <LineChart data={chartData}>
+            <LineChart data={chartData} onClick={d => { if (d?.activePayload?.[0]?.payload?.hasPhoto) setPhotoLog(d.activePayload[0].payload.fullLog); }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-dim)', fontSize: 11, fontFamily: 'Plus Jakarta Sans' }} />
               <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false} width={34} tick={{ fill: 'var(--text-dim)', fontSize: 11 }} />
@@ -337,15 +481,15 @@ export default function WeightTracking() {
                 <ReferenceLine y={parseFloat(goalWeight)} stroke="var(--gold)" strokeDasharray="6 4"
                   label={{ value: 'Goal', fill: 'var(--gold)', fontSize: 11, fontFamily: 'Plus Jakarta Sans' }} />
               )}
-              <Tooltip contentStyle={{ background: 'white', border: '1px solid var(--border)', borderRadius: '10px', fontFamily: 'Plus Jakarta Sans', fontSize: '0.82rem', boxShadow: 'var(--shadow-md)' }} />
+              <Tooltip content={<CustomTooltip />} />
               <Line type="monotone" dataKey="Weight" stroke="var(--accent)" strokeWidth={2.5}
-                dot={{ stroke: 'var(--accent)', fill: 'white', r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                dot={<CustomDot />} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       )}
 
-      {/* History */}
+      {/* History table */}
       <div className="card animate-fade-up" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '1.5rem 2rem 0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
@@ -372,6 +516,10 @@ export default function WeightTracking() {
                 const diff = prev != null ? parseFloat((log.weight_kg - prev).toFixed(1)) : null;
                 const DIcon = diff == null ? Minus : diff > 0 ? TrendingUp : diff < 0 ? TrendingDown : Minus;
                 const dColor = diff == null ? 'var(--text-dim)' : diff > 0 ? 'var(--red)' : diff < 0 ? 'var(--accent)' : 'var(--text-sub)';
+
+                // hidden file input per row (for adding photo to existing entry)
+                const inputId = `add-photo-${log.id}`;
+
                 return (
                   <tr key={log.id}>
                     <td style={{ paddingLeft: '2rem' }}>
@@ -390,18 +538,28 @@ export default function WeightTracking() {
                           <button
                             onClick={() => setPhotoLog(log)}
                             title="View photo"
-                            style={{
-                              background: 'var(--accent)', border: 'none',
-                              borderRadius: '8px', padding: '5px 9px',
-                              cursor: 'pointer', color: '#fff',
-                              display: 'flex', alignItems: 'center', gap: '0.3rem',
-                              fontSize: '0.75rem', fontWeight: 600,
-                            }}
+                            style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '5px 9px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 600 }}
                           >
                             <ImageIcon size={13} /> Photo
                           </button>
                         ) : (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)', fontStyle: 'italic' }}>—</span>
+                          <>
+                            <input
+                              type="file" accept="image/*" capture="user"
+                              style={{ display: 'none' }} id={inputId}
+                              onChange={async e => {
+                                const file = e.target.files?.[0];
+                                if (file) await handleAddPhotoToExisting(log, file);
+                              }}
+                            />
+                            <label
+                              htmlFor={inputId}
+                              title="Add photo"
+                              style={{ background: 'var(--surface2)', border: '1px dashed var(--border)', borderRadius: '8px', padding: '5px 9px', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 600 }}
+                            >
+                              <Upload size={13} /> Add
+                            </label>
+                          </>
                         )}
                         <button className="btn-icon-danger" onClick={() => handleDelete(log.id)}><Trash2 size={13} /></button>
                       </div>

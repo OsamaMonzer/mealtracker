@@ -1,15 +1,21 @@
 import { NextResponse } from 'next/server';
-import { openDb } from '../../../lib/db';
+import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 export async function GET() {
   try {
-    const db = await openDb();
-    // Add photo_url column if it doesn't exist yet (safe to call every time)
-    await db.run('ALTER TABLE weight_logs ADD COLUMN photo_url TEXT').catch(() => {});
-    const logs = await db.all('SELECT * FROM weight_logs ORDER BY date DESC, id DESC');
-    return NextResponse.json(logs);
+    const { data, error } = await supabase
+      .from('weight_logs')
+      .select('*')
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -20,14 +26,14 @@ export async function POST(request) {
     const { date, weight_kg, photo_url } = await request.json();
     if (!date || isNaN(weight_kg)) return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
 
-    const db = await openDb();
-    await db.run('ALTER TABLE weight_logs ADD COLUMN photo_url TEXT').catch(() => {});
-    const res = await db.run(
-      'INSERT INTO weight_logs (date, weight_kg, photo_url) VALUES (?, ?, ?)',
-      [date, parseFloat(weight_kg), photo_url || null]
-    );
+    const { data, error } = await supabase
+      .from('weight_logs')
+      .insert([{ date, weight_kg: parseFloat(weight_kg), photo_url: photo_url || null }])
+      .select()
+      .single();
 
-    return NextResponse.json({ success: true, id: res.lastID });
+    if (error) throw error;
+    return NextResponse.json({ success: true, id: data.id });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
