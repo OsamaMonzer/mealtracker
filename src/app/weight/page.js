@@ -465,34 +465,24 @@ export default function WeightTracking() {
           </div>
           <ResponsiveContainer width="100%" height="82%">
             <LineChart data={chartData} onClick={d => { if (d?.activePayload?.[0]?.payload?.hasPhoto) setPhotoLog(d.activePayload[0].payload.fullLog); }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-dim)', fontSize: 11, fontFamily: 'Plus Jakarta Sans' }} />
-              <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false} width={34} tick={{ fill: 'var(--text-dim)', fontSize: 11 }} />
-              {goalWeight && (
-                <ReferenceLine y={parseFloat(goalWeight)} stroke="var(--gold)" strokeDasharray="6 4"
-                  label={{ value: 'Goal', fill: 'var(--gold)', fontSize: 11, fontFamily: 'Plus Jakarta Sans' }} />
-              )}
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-dim)' }} axisLine={false} tickLine={false} />
+              <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11, fill: 'var(--text-dim)' }} axisLine={false} tickLine={false} width={38} />
               <Tooltip content={<CustomTooltip />} />
-              <Line type="monotone" dataKey="Weight" stroke="var(--accent)" strokeWidth={2.5}
-                dot={<CustomDot />} activeDot={{ r: 6 }} />
+              {hasGoal && <ReferenceLine y={gW} stroke="var(--accent)" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: `Goal ${gW}kg`, position: 'insideTopRight', fontSize: 11, fill: 'var(--accent)' }} />}
+              <Line type="monotone" dataKey="Weight" stroke="var(--accent)" strokeWidth={2.5} dot={<CustomDot />} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       )}
 
-      {/* History table */}
-      <div className="card animate-fade-up" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '1.5rem 2rem 0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-            <Scale size={14} color="var(--text-dim)" />
-            <span className="section-label" style={{ margin: 0 }}>History</span>
-          </div>
-        </div>
-        {!loading && logs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
-            <Scale size={34} strokeWidth={1.4} style={{ marginBottom: '0.75rem', opacity: 0.5 }} />
-            <p>No entries yet.</p>
-          </div>
+      {/* History */}
+      <div className="card animate-fade-up">
+        <div className="section-label">History</div>
+        {loading ? (
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>Loading…</p>
+        ) : logs.length === 0 ? (
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>No logs yet.</p>
         ) : (
           <table className="data-table" style={{ margin: 0 }}>
             <thead><tr>
@@ -553,3 +543,15 @@ export default function WeightTracking() {
                           </>
                         )}
                         <button className="btn-icon-danger" onClick={() => handleDelete(log.id)}><Trash2 size={13} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </main>
+  );
+}
