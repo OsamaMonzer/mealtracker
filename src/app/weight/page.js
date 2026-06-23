@@ -2,10 +2,60 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Scale, TrendingDown, TrendingUp, Minus, Trash2, Camera, X, ImageIcon, Bell, RefreshCw, Upload } from 'lucide-react';
+import { ArrowLeft, Scale, TrendingDown, TrendingUp, Minus, Trash2, Camera, X, ImageIcon, Bell, RefreshCw, Upload, CalendarClock } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { showToast } from '../../components/ToastContainer';
 import { useSupabaseRealtime } from '../../hooks/useSupabaseRealtime';
+
+// ── Weighted Linear Regression Projection ─────────────────────────────────
+// Recent logs (last 28 days) are weighted 3x — makes the projection follow
+// your actual current pace, not the average of all time.
+function computeProjection(logs, goalWeight) {
+  if (!logs || logs.length < 3) return null;
+
+  const sorted = [...logs].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const origin = new Date(sorted[0].date + 'T12:00:00').getTime();
+  const MS_PER_DAY = 86400000;
+  const cutoff = Date.now() - 28 * MS_PER_DAY;
+
+  // Build weighted points
+  const points = sorted.map(l => {
+    const t = (new Date(l.date + 'T12:00:00').getTime() - origin) / MS_PER_DAY;
+    const w = new Date(l.date + 'T12:00:00').getTime() >= cutoff ? 3 : 1;
+    return { t, y: parseFloat(l.weight_kg), w };
+  });
+
+  // Weighted least squares: y = a + b*t
+  let sumW = 0, sumWt = 0, sumWy = 0, sumWtt = 0, sumWty = 0;
+  for (const p of points) {
+    sumW   += p.w;
+    sumWt  += p.w * p.t;
+    sumWy  += p.w * p.y;
+    sumWtt += p.w * p.t * p.t;
+    sumWty += p.w * p.t * p.y;
+  }
+  const denom = sumW * sumWtt - sumWt * sumWt;
+  if (Math.abs(denom) < 1e-9) return null;
+
+  const b = (sumW * sumWty - sumWt * sumWy) / denom; // kg/day slope
+  const a = (sumWy - b * sumWt) / sumW;               // intercept
+
+  // Only project if actually losing (negative slope toward goal)
+  const latestW = sorted[sorted.length - 1].weight_kg;
+  const gW = parseFloat(goalWeight);
+  if (b >= 0 && latestW > gW) return { rate: b, projected: null, message: 'Not trending toward goal' };
+  if (latestW <= gW)          return { rate: b, projected: null, message: 'Goal reached!' };
+  if (Math.abs(b) < 0.001)   return { rate: b, projected: null, message: 'Rate too slow to project' };
+
+  // Days from origin when y = gW
+  const tGoal = (gW - a) / b;
+  const projectedDate = new Date(origin + tGoal * MS_PER_DAY);
+
+  // kg/week rate (negative = losing)
+  const kgPerWeek = parseFloat((b * 7).toFixed(2));
+
+  return { rate: kgPerWeek, projected: projectedDate, message: null };
+}
 
 // ── Photo Preview Modal ────────────────────────────────────────────────────
 function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
@@ -88,7 +138,6 @@ function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
 
         {/* Actions */}
         <div style={{ padding: '0.5rem 1.25rem 1.25rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          {/* Hidden file input for replace — no capture so user picks camera or library */}
           <input
             ref={replaceRef}
             type="file"
@@ -97,8 +146,6 @@ function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
             onChange={handleFileChange}
             id="replace-photo-input"
           />
-
-          {/* Reupload button */}
           <label
             htmlFor="replace-photo-input"
             style={{
@@ -117,7 +164,6 @@ function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
             {working ? 'Working…' : 'Replace Photo'}
           </label>
 
-          {/* Delete photo only */}
           {!confirmDelete ? (
             <button
               onClick={() => setConfirmDelete(true)}
@@ -299,6 +345,9 @@ export default function WeightTracking() {
     if (totalToLose > 0) progressPercent = Math.max(0, Math.min(100, (amountLost / totalToLose) * 100));
   }
 
+  // Weighted linear regression projection
+  const projection = hasGoal ? computeProjection(logs, goalWeight) : null;
+
   const chartData = sorted.slice(-20).map(L => ({
     name: new Date(L.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     Weight: L.weight_kg,
@@ -397,6 +446,7 @@ export default function WeightTracking() {
           </div>
         </div>
 
+        {/* Progress bar */}
         {hasGoal && (
           <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>
@@ -407,6 +457,55 @@ export default function WeightTracking() {
             <div style={{ height: '8px', background: 'var(--surface2)', borderRadius: '999px', overflow: 'hidden' }}>
               <div style={{ height: '100%', background: 'var(--accent)', width: `${progressPercent}%`, transition: 'width 1s cubic-bezier(0.4,0,0.2,1)' }} />
             </div>
+
+            {/* ── Projection Banner ────────────────────────── */}
+            {projection && (
+              <div style={{
+                marginTop: '1rem',
+                background: projection.projected
+                  ? 'linear-gradient(135deg, var(--surface2) 0%, color-mix(in oklab, var(--accent) 8%, var(--surface2)) 100%)'
+                  : 'var(--surface2)',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                padding: '0.75rem 1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+              }}>
+                <CalendarClock size={18} color="var(--accent)" style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  {projection.projected ? (
+                    <>
+                      <div style={{ fontSize: '0.82rem', color: 'var(--text-dim)', marginBottom: '0.15rem' }}>
+                        At your current pace
+                        {' '}(<span style={{ color: 'var(--accent)', fontWeight: 700 }}>
+                          {projection.rate < 0 ? '' : '+'}{projection.rate} kg/week
+                        </span>)
+                      </div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                        🎯 Goal by{' '}
+                        {projection.projected.toLocaleDateString('en-US', {
+                          weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
+                        })}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '0.15rem' }}>
+                        Based on weighted regression of your last 28 days
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)', fontWeight: 600 }}>
+                      {projection.message}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!projection && logs.length > 0 && logs.length < 3 && (
+              <div style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-dim)', textAlign: 'center' }}>
+                Log at least 3 weigh-ins to see your projected goal date
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -427,7 +526,6 @@ export default function WeightTracking() {
             </div>
           </div>
 
-          {/* No capture attr — user gets to choose camera or photo library */}
           <div style={{ marginBottom: '1rem' }}>
             <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }}
               onChange={handlePhotoSelect} id="weight-photo-input" />
@@ -524,7 +622,6 @@ export default function WeightTracking() {
                           </button>
                         ) : (
                           <>
-                            {/* No capture attr — user picks camera or library */}
                             <input
                               type="file" accept="image/*"
                               style={{ display: 'none' }} id={inputId}
