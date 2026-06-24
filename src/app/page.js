@@ -2,17 +2,13 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Carrot, BookOpen, UtensilsCrossed, Scale, TrendingDown, ChefHat, Flame, Beef, ChevronLeft, ChevronRight, X, Calendar, ImageIcon, RefreshCw, Trash2, Target, Zap } from 'lucide-react';
+import { Carrot, BookOpen, UtensilsCrossed, Scale, TrendingDown, ChefHat, Flame, Beef, ChevronLeft, ChevronRight, X, Calendar, ImageIcon, RefreshCw, Trash2, Target, Zap, Settings } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, ReferenceLine,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime';
 import { showToast } from '../components/ToastContainer';
-
-const GOAL = 1800;
-const PROTEIN_GOAL = 150; // g
-const WEIGHT_TARGET = 75; // kg — dashed goal line
 
 // ── Streak calculator ─────────────────────────────────────────────────────
 function calcStreak(allDates) {
@@ -21,7 +17,6 @@ function calcStreak(allDates) {
   const dateSet = new Set(allDates);
   let streak = 0;
   let cursor = new Date();
-  // Allow today OR yesterday as starting point (so streak doesn't break at midnight before logging)
   if (!dateSet.has(today)) cursor.setDate(cursor.getDate() - 1);
   while (true) {
     const d = cursor.toISOString().split('T')[0];
@@ -33,14 +28,12 @@ function calcStreak(allDates) {
 }
 
 // ── Weight insight helpers ─────────────────────────────────────────────────
-function calcWeightInsights(weightLogData) {
+function calcWeightInsights(weightLogData, WEIGHT_TARGET) {
   if (!weightLogData || weightLogData.length < 2) return null;
-
   const last = weightLogData[weightLogData.length - 1];
   const weekAgoIdx = Math.max(0, weightLogData.length - 8);
   const weekAgo = weightLogData[weekAgoIdx];
   const weeklyDiff = +(last.Weight - weekAgo.Weight).toFixed(2);
-
   const n = weightLogData.length;
   const xs = weightLogData.map((_, i) => i);
   const ys = weightLogData.map(d => d.Weight);
@@ -50,12 +43,10 @@ function calcWeightInsights(weightLogData) {
   const sumX2 = xs.reduce((s, x) => s + x * x, 0);
   const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
   const intercept = (sumY - slope * sumX) / n;
-
   let projectedDate = null;
   const currentWeight = last.Weight;
   const isLosing = slope < 0 && currentWeight > WEIGHT_TARGET;
   const isGaining = slope > 0 && currentWeight < WEIGHT_TARGET;
-
   if ((isLosing || isGaining) && Math.abs(slope) > 0.001) {
     const stepsNeeded = (WEIGHT_TARGET - intercept) / slope;
     const daysFromStart = stepsNeeded - (n - 1);
@@ -65,10 +56,8 @@ function calcWeightInsights(weightLogData) {
       projectedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
   }
-
   const height = 1.75;
   const bmi = +(currentWeight / (height * height)).toFixed(1);
-
   return { weeklyDiff, projectedDate, currentWeight, bmi, slope };
 }
 
@@ -77,20 +66,14 @@ function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [working, setWorking] = useState(false);
   const replaceRef = useRef(null);
-
   if (!log) return null;
-
-  const label = new Date(log.date + 'T12:00:00').toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-  });
-
+  const label = new Date(log.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   async function handleDeletePhoto() {
     setWorking(true);
     await onDeletePhoto(log);
     setWorking(false);
     onClose();
   }
-
   async function handleFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -99,118 +82,29 @@ function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
     setWorking(false);
     onClose();
   }
-
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.85)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1.5rem',
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: '#fff',
-          borderRadius: '20px',
-          maxWidth: '480px',
-          width: '100%',
-          overflow: 'hidden',
-          boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-        }}
-      >
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px', maxWidth: '480px', width: '100%', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
         <div style={{ position: 'relative' }}>
-          <img
-            src={log.photo_url}
-            alt={`Progress photo ${label}`}
-            style={{ width: '100%', display: 'block', maxHeight: '65vh', objectFit: 'cover' }}
-          />
-          <button
-            onClick={onClose}
-            style={{
-              position: 'absolute', top: '0.75rem', right: '0.75rem',
-              background: 'rgba(0,0,0,0.5)', border: 'none',
-              borderRadius: '50%', width: '36px', height: '36px',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: '#fff',
-            }}
-          >
-            <X size={18} />
-          </button>
+          <img src={log.photo_url} alt={`Progress photo ${label}`} style={{ width: '100%', display: 'block', maxHeight: '65vh', objectFit: 'cover' }} />
+          <button onClick={onClose} style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}><X size={18} /></button>
         </div>
-
         <div style={{ padding: '1rem 1.25rem 0.5rem' }}>
           <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.2rem', color: '#111' }}>{label}</div>
           <div style={{ fontSize: '0.85rem', color: '#999', marginTop: '0.2rem' }}>{log.weight_kg} kg</div>
         </div>
-
         <div style={{ padding: '0.5rem 1.25rem 1.25rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <input
-            ref={replaceRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleFileChange}
-            id="home-replace-photo-input"
-          />
-          <label
-            htmlFor="home-replace-photo-input"
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              background: 'var(--surface2, #f3f4f6)',
-              border: '1px solid var(--border, #e5e7eb)',
-              borderRadius: '10px', padding: '0.55rem 1rem',
-              cursor: working ? 'not-allowed' : 'pointer',
-              fontSize: '0.85rem', fontWeight: 600,
-              color: 'var(--text-main, #111)',
-              opacity: working ? 0.5 : 1,
-              flex: 1, justifyContent: 'center',
-            }}
-          >
-            <RefreshCw size={14} />
-            {working ? 'Working…' : 'Replace Photo'}
+          <input ref={replaceRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} id="home-replace-photo-input" />
+          <label htmlFor="home-replace-photo-input" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--surface2, #f3f4f6)', border: '1px solid var(--border, #e5e7eb)', borderRadius: '10px', padding: '0.55rem 1rem', cursor: working ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main, #111)', opacity: working ? 0.5 : 1, flex: 1, justifyContent: 'center' }}>
+            <RefreshCw size={14} />{working ? 'Working…' : 'Replace Photo'}
           </label>
-
           {!confirmDelete ? (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              disabled={working}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                background: '#fff0f0',
-                border: '1px solid #fca5a5',
-                borderRadius: '10px', padding: '0.55rem 1rem',
-                cursor: working ? 'not-allowed' : 'pointer',
-                fontSize: '0.85rem', fontWeight: 600,
-                color: '#dc2626',
-                flex: 1, justifyContent: 'center',
-              }}
-            >
-              <Trash2 size={14} />
-              Delete Photo
+            <button onClick={() => setConfirmDelete(true)} disabled={working} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#fff0f0', border: '1px solid #fca5a5', borderRadius: '10px', padding: '0.55rem 1rem', cursor: working ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: 600, color: '#dc2626', flex: 1, justifyContent: 'center' }}>
+              <Trash2 size={14} />Delete Photo
             </button>
           ) : (
-            <button
-              onClick={handleDeletePhoto}
-              disabled={working}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                background: '#dc2626',
-                border: 'none',
-                borderRadius: '10px', padding: '0.55rem 1rem',
-                cursor: working ? 'not-allowed' : 'pointer',
-                fontSize: '0.85rem', fontWeight: 600,
-                color: '#fff',
-                flex: 1, justifyContent: 'center',
-              }}
-            >
-              <Trash2 size={14} />
-              {working ? 'Deleting…' : 'Confirm Delete'}
+            <button onClick={handleDeletePhoto} disabled={working} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#dc2626', border: 'none', borderRadius: '10px', padding: '0.55rem 1rem', cursor: working ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: 600, color: '#fff', flex: 1, justifyContent: 'center' }}>
+              <Trash2 size={14} />{working ? 'Deleting…' : 'Confirm Delete'}
             </button>
           )}
         </div>
@@ -220,10 +114,9 @@ function PhotoModal({ log, onClose, onDeletePhoto, onReplacePhoto }) {
 }
 
 // ── Day History Modal ──────────────────────────────────────────────────────
-function DayModal({ date, onClose }) {
+function DayModal({ date, onClose, GOAL }) {
   const [dayData, setDayData] = useState(null);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     if (!date) return;
     setLoading(true);
@@ -232,65 +125,28 @@ function DayModal({ date, onClose }) {
       .then(d => { setDayData(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, [date]);
-
   if (!date) return null;
-
   const label = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   const isToday = date === new Date().toISOString().split('T')[0];
-
   const mealGroups = {};
   (dayData?.logs || []).forEach(log => {
     const mt = log.meal_type || 'Other';
     if (!mealGroups[mt]) mealGroups[mt] = [];
     mealGroups[mt].push(log);
   });
-
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.6)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-        backdropFilter: 'blur(3px)',
-        WebkitBackdropFilter: 'blur(3px)',
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: '#ffffff',
-          borderRadius: '20px 20px 0 0',
-          width: '100%',
-          maxWidth: '640px',
-          maxHeight: '88vh',
-          minHeight: '200px',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 -8px 48px rgba(0,0,0,0.3)',
-          position: 'relative',
-        }}
-      >
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#ffffff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '640px', maxHeight: '88vh', minHeight: '200px', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 48px rgba(0,0,0,0.3)', position: 'relative' }}>
         <div style={{ display: 'flex', justifyContent: 'center', padding: '0.75rem 0 0', background: '#ffffff' }}>
           <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: '#e0e0e0' }} />
         </div>
-
         <div style={{ padding: '1rem 1.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #efefef', background: '#ffffff' }}>
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {isToday ? 'Today' : 'History'}
-            </div>
+            <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{isToday ? 'Today' : 'History'}</div>
             <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.4rem', lineHeight: 1.2, color: '#111' }}>{label}</div>
           </div>
-          <button onClick={onClose} style={{ background: '#f3f3f3', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#666', flexShrink: 0 }}>
-            <X size={16} />
-          </button>
+          <button onClick={onClose} style={{ background: '#f3f3f3', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#666', flexShrink: 0 }}><X size={16} /></button>
         </div>
-
         {dayData?.totals && (
           <div style={{ display: 'flex', borderBottom: '1px solid #efefef', background: '#fafafa' }}>
             {[
@@ -306,7 +162,6 @@ function DayModal({ date, onClose }) {
             ))}
           </div>
         )}
-
         <div style={{ overflowY: 'auto', flex: 1, padding: '1rem 1.5rem 2rem', background: '#ffffff' }}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: '#999', fontSize: '0.9rem' }}>Loading…</div>
@@ -331,12 +186,80 @@ function DayModal({ date, onClose }) {
                       <span style={{ color: '#c62828' }}>F {log.fat}g</span>
                       <span style={{ marginLeft: 'auto', color: '#999' }}>{log.portions_eaten} {log.portions_eaten === 1 ? 'portion' : 'portions'}</span>
                     </div>
+                    {/* Ingredient breakdown inside DayModal */}
+                    {log.ingredients?.length > 0 && (
+                      <div style={{ marginTop: '0.6rem', paddingTop: '0.5rem', borderTop: '1px solid #e8e8e8' }}>
+                        {log.ingredients.map((ing, i) => {
+                          const r = ing.weight_g / 100;
+                          return (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#888', padding: '0.15rem 0' }}>
+                              <span>{ing.ing_name} <span style={{ color: '#bbb' }}>{ing.weight_g}g</span></span>
+                              <span>{(ing.calories_100g * r).toFixed(0)} kcal</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             ))
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Goals Settings Panel ───────────────────────────────────────────────────
+function GoalsPanel({ goals, onSave, onClose }) {
+  const [form, setForm] = useState({ ...goals });
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave(e) {
+    e.preventDefault();
+    setSaving(true);
+    await onSave(form);
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#ffffff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '480px', boxShadow: '0 -8px 48px rgba(0,0,0,0.3)', padding: '0 0 2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '0.75rem 0 0' }}>
+          <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: '#e0e0e0' }} />
+        </div>
+        <div style={{ padding: '1rem 1.5rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.4rem' }}>Your Goals</div>
+          <button onClick={onClose} style={{ background: '#f3f3f3', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#666' }}><X size={16} /></button>
+        </div>
+        <form onSubmit={handleSave} style={{ padding: '0.5rem 1.5rem' }}>
+          {[
+            { key: 'calorie_goal', label: 'Daily Calorie Goal', unit: 'kcal' },
+            { key: 'protein_goal', label: 'Protein Goal', unit: 'g' },
+            { key: 'carbs_goal', label: 'Carbs Goal', unit: 'g' },
+            { key: 'fat_goal', label: 'Fat Goal', unit: 'g' },
+            { key: 'weight_target', label: 'Target Weight', unit: 'kg' },
+          ].map(({ key, label, unit }) => (
+            <div key={key} className="form-group" style={{ marginBottom: '0.9rem' }}>
+              <label style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>{label}</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="number" step="any" min="0"
+                  className="form-input"
+                  value={form[key]}
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ color: 'var(--text-dim)', fontSize: '0.82rem', width: '30px' }}>{unit}</span>
+              </div>
+            </div>
+          ))}
+          <button type="submit" className="btn btn-primary" disabled={saving} style={{ width: '100%', padding: '0.85rem', justifyContent: 'center', marginTop: '0.5rem' }}>
+            {saving ? 'Saving…' : 'Save Goals'}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -349,9 +272,15 @@ export default function Home() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [viewingDate, setViewingDate] = useState(null);
   const [photoLog, setPhotoLog] = useState(null);
+  const [showGoals, setShowGoals] = useState(false);
+  const [goals, setGoals] = useState({ calorie_goal: 1800, protein_goal: 150, carbs_goal: 200, fat_goal: 60, weight_target: 75 });
 
   const todayStr = new Date().toISOString().split('T')[0];
   const hour = new Date().getHours();
+
+  const GOAL = goals.calorie_goal;
+  const PROTEIN_GOAL = goals.protein_goal;
+  const WEIGHT_TARGET = goals.weight_target;
 
   async function fetchDashboard() {
     try {
@@ -360,7 +289,14 @@ export default function Home() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { fetchDashboard(); }, []);
+  async function fetchGoals() {
+    try {
+      const g = await (await fetch('/api/goals')).json();
+      setGoals(g);
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => { fetchDashboard(); fetchGoals(); }, []);
 
   useEffect(() => {
     if (data && !selectedDate) setSelectedDate(todayStr);
@@ -371,107 +307,62 @@ export default function Home() {
     fetchDashboard
   );
 
-  // ── Smart greeting ────────────────────────────────────────────────────────
+  async function handleSaveGoals(newGoals) {
+    await fetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newGoals) });
+    setGoals({ calorie_goal: Number(newGoals.calorie_goal), protein_goal: Number(newGoals.protein_goal), carbs_goal: Number(newGoals.carbs_goal), fat_goal: Number(newGoals.fat_goal), weight_target: Number(newGoals.weight_target) });
+    showToast('Goals saved ✓');
+  }
+
   function getGreeting(todayMacros, allDates) {
     const timeGreet = hour < 5 ? 'Up late,' : hour < 12 ? 'Good morning,' : hour < 18 ? 'Good afternoon,' : 'Good evening,';
     const todayLogged = allDates?.includes(todayStr);
     const cals = todayMacros?.cals ?? 0;
-
-    if (!todayLogged || cals === 0) {
-      return { time: timeGreet, sub: "You haven't logged anything today yet." };
-    }
-    if (cals > GOAL) {
-      return { time: timeGreet, sub: `You're ${cals - GOAL} kcal over your goal today.` };
-    }
+    if (!todayLogged || cals === 0) return { time: timeGreet, sub: "You haven't logged anything today yet." };
+    if (cals > GOAL) return { time: timeGreet, sub: `You're ${cals - GOAL} kcal over your goal today.` };
     return { time: timeGreet, sub: `Nice — already logged ${cals} kcal today.` };
   }
 
-  // Weight photo handlers
   async function uploadPhoto(file, date) {
     const fd = new FormData();
-    fd.append('file', file);
-    fd.append('date', date);
+    fd.append('file', file); fd.append('date', date);
     const res = await fetch('/api/weight/photo', { method: 'POST', body: fd });
     const json = await res.json();
     return json.url || null;
   }
 
   async function handleDeletePhoto(log) {
-    await fetch('/api/weight/photo', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ photo_url: log.photo_url }),
-    });
-    await fetch(`/api/weight/${log.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ photo_url: null }),
-    });
-    fetchDashboard();
-    showToast('Photo deleted');
+    await fetch('/api/weight/photo', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo_url: log.photo_url }) });
+    await fetch(`/api/weight/${log.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo_url: null }) });
+    fetchDashboard(); showToast('Photo deleted');
   }
 
   async function handleReplacePhoto(log, file) {
-    if (log.photo_url) {
-      await fetch('/api/weight/photo', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photo_url: log.photo_url }),
-      });
-    }
+    if (log.photo_url) await fetch('/api/weight/photo', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo_url: log.photo_url }) });
     const newUrl = await uploadPhoto(file, log.date);
     if (!newUrl) { showToast('Upload failed', 'error'); return; }
-    await fetch(`/api/weight/${log.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ photo_url: newUrl }),
-    });
-    fetchDashboard();
-    showToast('Photo replaced ✓');
+    await fetch(`/api/weight/${log.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo_url: newUrl }) });
+    fetchDashboard(); showToast('Photo replaced ✓');
   }
 
   const allDates = data?.allDates || [];
   const selectedIdx = allDates.indexOf(selectedDate);
   const canGoPrev = selectedIdx > 0;
   const canGoNext = selectedIdx !== -1 && selectedIdx < allDates.length - 1;
-
   function goPrev() { if (canGoPrev) setSelectedDate(allDates[selectedIdx - 1]); }
   function goNext() { if (canGoNext) setSelectedDate(allDates[selectedIdx + 1]); }
 
   const isFuture = selectedDate && selectedDate > todayStr;
   const isToday = selectedDate === todayStr;
-
-  const selectedLabel = selectedDate
-    ? isToday
-      ? 'Today'
-      : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-    : 'Today';
-
+  const selectedLabel = selectedDate ? (isToday ? 'Today' : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })) : 'Today';
   const chartEntry = data?.chartData?.find(c => c.date === selectedDate);
-  const displayMacros = selectedDate && !isToday && chartEntry
-    ? { cals: chartEntry.Calories, p: '—', c: '—', f: '—' }
-    : data?.todayMacros;
-
-  // Streak
+  const displayMacros = selectedDate && !isToday && chartEntry ? { cals: chartEntry.Calories, p: '—', c: '—', f: '—' } : data?.todayMacros;
   const streak = calcStreak(allDates);
-
-  // Weight insights
-  const weightInsights = calcWeightInsights(data?.weightLogData);
-
-  // Smart greeting
+  const weightInsights = calcWeightInsights(data?.weightLogData, WEIGHT_TARGET);
   const greeting = getGreeting(data?.todayMacros, allDates);
 
-  // Custom dot for weight chart
   function WeightDot({ cx, cy, payload }) {
-    if (!payload?.hasPhoto) {
-      return <circle cx={cx} cy={cy} r={4} stroke="var(--accent)" strokeWidth={2} fill="white" />;
-    }
-    return (
-      <g style={{ cursor: 'pointer' }}>
-        <circle cx={cx} cy={cy} r={7} fill="var(--accent)" opacity={0.15} />
-        <circle cx={cx} cy={cy} r={4} stroke="var(--accent)" strokeWidth={2} fill="var(--accent)" />
-      </g>
-    );
+    if (!payload?.hasPhoto) return <circle cx={cx} cy={cy} r={4} stroke="var(--accent)" strokeWidth={2} fill="white" />;
+    return (<g style={{ cursor: 'pointer' }}><circle cx={cx} cy={cy} r={7} fill="var(--accent)" opacity={0.15} /><circle cx={cx} cy={cy} r={4} stroke="var(--accent)" strokeWidth={2} fill="var(--accent)" /></g>);
   }
 
   function WeightTooltip({ active, payload }) {
@@ -481,43 +372,41 @@ export default function Home() {
       <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.6rem 0.9rem', fontSize: '0.82rem', fontFamily: 'Plus Jakarta Sans', boxShadow: 'var(--shadow-md)' }}>
         <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>{d.name}</div>
         <div style={{ color: 'var(--accent)', fontWeight: 600 }}>{d.Weight} kg</div>
-        {d.hasPhoto && (
-          <div style={{ color: 'var(--accent)', fontSize: '0.75rem', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            <ImageIcon size={11} /> Tap to view photo
-          </div>
-        )}
+        {d.hasPhoto && (<div style={{ color: 'var(--accent)', fontSize: '0.75rem', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><ImageIcon size={11} /> Tap to view photo</div>)}
       </div>
     );
   }
 
-  // Weekly avg calorie bar color
   const avgCals = data?.weeklyAvgCals ?? 0;
   const avgPct = Math.min(100, (avgCals / GOAL) * 100);
   const avgColor = avgCals > GOAL ? 'var(--red)' : 'var(--accent)';
 
   return (
     <main>
-      {viewingDate && <DayModal date={viewingDate} onClose={() => setViewingDate(null)} />}
-      {photoLog && (
-        <PhotoModal
-          log={photoLog}
-          onClose={() => setPhotoLog(null)}
-          onDeletePhoto={handleDeletePhoto}
-          onReplacePhoto={handleReplacePhoto}
-        />
-      )}
+      {viewingDate && <DayModal date={viewingDate} onClose={() => setViewingDate(null)} GOAL={GOAL} />}
+      {photoLog && <PhotoModal log={photoLog} onClose={() => setPhotoLog(null)} onDeletePhoto={handleDeletePhoto} onReplacePhoto={handleReplacePhoto} />}
+      {showGoals && <GoalsPanel goals={goals} onSave={handleSaveGoals} onClose={() => setShowGoals(false)} />}
 
       {/* Header */}
       <div style={{ marginBottom: '3rem' }}>
-        <p className="page-eyebrow animate-fade-up stagger-1">{greeting.time}</p>
-        <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <h1 className="page-title animate-fade-up stagger-2" style={{ fontSize: '3rem' }}>
-            Osama<em>'s Kitchen</em>
-          </h1>
-        </Link>
-        <p className="page-sub animate-fade-up stagger-3" style={{ color: data?.todayMacros?.cals > GOAL ? 'var(--red)' : 'var(--text-dim)' }}>
-          {loading ? 'Your personal nutrition & recipe hub.' : greeting.sub}
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <p className="page-eyebrow animate-fade-up stagger-1">{greeting.time}</p>
+            <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+              <h1 className="page-title animate-fade-up stagger-2" style={{ fontSize: '3rem' }}>Osama<em>'s Kitchen</em></h1>
+            </Link>
+            <p className="page-sub animate-fade-up stagger-3" style={{ color: data?.todayMacros?.cals > GOAL ? 'var(--red)' : 'var(--text-dim)' }}>
+              {loading ? 'Your personal nutrition & recipe hub.' : greeting.sub}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowGoals(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: '0.5rem', marginTop: '0.25rem', borderRadius: '8px', flexShrink: 0 }}
+            title="Adjust goals"
+          >
+            <Settings size={18} />
+          </button>
+        </div>
       </div>
 
       {/* Nav */}
@@ -540,273 +429,27 @@ export default function Home() {
                 <span className="section-label" style={{ margin: 0 }}>Intake</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <button onClick={goPrev} disabled={!canGoPrev} style={{ background: 'none', border: 'none', cursor: canGoPrev ? 'pointer' : 'default', color: canGoPrev ? 'var(--text-main)' : 'var(--border)', padding: '4px', display: 'flex' }}>
-                  <ChevronLeft size={18} />
+                <button onClick={goPrev} disabled={!canGoPrev} style={{ background: 'none', border: 'none', cursor: canGoPrev ? 'pointer' : 'default', color: canGoPrev ? 'var(--text-main)' : 'var(--border)', padding: '4px', display: 'flex' }}><ChevronLeft size={18} /></button>
+                <button onClick={() => setViewingDate(selectedDate)} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: isFuture ? '#fff8e1' : 'var(--surface2)', border: isFuture ? '1px solid #f59e0b' : 'none', borderRadius: '8px', padding: '4px 10px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', color: isFuture ? '#b45309' : 'var(--text-main)' }}>
+                  <Calendar size={13} />{selectedLabel}
                 </button>
-                <button
-                  onClick={() => setViewingDate(selectedDate)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.3rem',
-                    background: isFuture ? '#fff8e1' : 'var(--surface2)',
-                    border: isFuture ? '1px solid #f59e0b' : 'none',
-                    borderRadius: '8px', padding: '4px 10px', fontSize: '0.8rem',
-                    fontWeight: 600, cursor: 'pointer',
-                    color: isFuture ? '#b45309' : 'var(--text-main)'
-                  }}
-                >
-                  <Calendar size={13} />
-                  {selectedLabel}
-                </button>
-                <button onClick={goNext} disabled={!canGoNext} style={{ background: 'none', border: 'none', cursor: canGoNext ? 'pointer' : 'default', color: canGoNext ? 'var(--text-main)' : 'var(--border)', padding: '4px', display: 'flex' }}>
-                  <ChevronRight size={18} />
-                </button>
+                <button onClick={goNext} disabled={!canGoNext} style={{ background: 'none', border: 'none', cursor: canGoNext ? 'pointer' : 'default', color: canGoNext ? 'var(--text-main)' : 'var(--border)', padding: '4px', display: 'flex' }}><ChevronRight size={18} /></button>
               </div>
             </div>
-
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Goal: {GOAL} kcal</div>
-              {isToday && (
-                <Link href="/tracking" style={{ fontSize: '0.8rem', color: 'var(--accent)', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <UtensilsCrossed size={13} /> Log Meal
-                </Link>
-              )}
-              {!isToday && (
-                <button onClick={() => setViewingDate(selectedDate)} style={{ fontSize: '0.8rem', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <Calendar size={13} /> View Meals
-                </button>
+              {isToday ? (
+                <Link href="/tracking" style={{ fontSize: '0.8rem', color: 'var(--accent)', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}><UtensilsCrossed size={13} /> Log Meal</Link>
+              ) : (
+                <button onClick={() => setViewingDate(selectedDate)} style={{ fontSize: '0.8rem', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Calendar size={13} /> View Meals</button>
               )}
             </div>
-
             <div style={{ marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem' }}>
-                <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2.5rem', color: (displayMacros?.cals || 0) > GOAL ? 'var(--red)' : 'var(--text-main)', lineHeight: 1 }}>
-                  {displayMacros?.cals ?? 0}
-                </span>
+                <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2.5rem', color: (displayMacros?.cals || 0) > GOAL ? 'var(--red)' : 'var(--text-main)', lineHeight: 1 }}>{displayMacros?.cals ?? 0}</span>
                 <span style={{ fontSize: '0.9rem', color: (displayMacros?.cals || 0) > GOAL ? 'var(--red)' : 'var(--accent)', fontWeight: 600 }}>
-                  {(displayMacros?.cals || 0) > GOAL
-                    ? `+${(displayMacros?.cals || 0) - GOAL} over goal`
-                    : `${GOAL - (displayMacros?.cals || 0)} remaining`}
+                  {(displayMacros?.cals || 0) > GOAL ? `+${(displayMacros?.cals || 0) - GOAL} over goal` : `${GOAL - (displayMacros?.cals || 0)} remaining`}
                 </span>
               </div>
               <div style={{ height: '8px', background: 'var(--surface2)', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: (displayMacros?.cals || 0) > GOAL ? 'var(--red)' : 'var(--accent)', width: `${Math.min(100, ((displayMacros?.cals || 0) / GOAL) * 100)}%`, transition: 'width 1s cubic-bezier(0.4,0,0.2,1)' }} />
-              </div>
-            </div>
-
-            {/* Macros row with protein goal */}
-            <div className="stats-row" style={{ marginTop: 'auto' }}>
-              {isToday ? (
-                <>
-                  <div className="stat-item">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                      <div className="stat-value" style={{ color: 'var(--blue)' }}>
-                        {data.todayMacros.p}g
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', fontWeight: 400, marginLeft: '0.2rem' }}>/ {PROTEIN_GOAL}g</span>
-                      </div>
-                      <div style={{ height: '4px', background: 'var(--surface2)', borderRadius: '999px', overflow: 'hidden', width: '100%' }}>
-                        <div style={{
-                          height: '100%',
-                          background: data.todayMacros.p >= PROTEIN_GOAL ? 'var(--accent)' : 'var(--blue)',
-                          width: `${Math.min(100, (data.todayMacros.p / PROTEIN_GOAL) * 100)}%`,
-                          transition: 'width 1s cubic-bezier(0.4,0,0.2,1)',
-                        }} />
-                      </div>
-                    </div>
-                    <div className="stat-label">Protein</div>
-                  </div>
-                  <div className="stat-item" style={{ borderLeft: '1px solid var(--border)' }}><div className="stat-value" style={{ color: 'var(--gold)' }}>{data.todayMacros.c}g</div><div className="stat-label">Carbs</div></div>
-                  <div className="stat-item" style={{ borderLeft: '1px solid var(--border)' }}><div className="stat-value" style={{ color: 'var(--red)' }}>{data.todayMacros.f}g</div><div className="stat-label">Fat</div></div>
-                </>
-              ) : (
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <button onClick={() => setViewingDate(selectedDate)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 1.2rem', fontSize: '0.82rem', cursor: 'pointer', color: 'var(--text-sub)' }}>Tap to see full breakdown →</button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Quick stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem' }}>
-            <div className="card-flat animate-fade-up stagger-2">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.75rem' }}>
-                <Scale size={14} color="var(--text-dim)" />
-                <span className="section-label" style={{ margin: 0 }}>Body Weight</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-                <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2.4rem', letterSpacing: '-1px' }}>{data.currentWeight ?? '—'}</span>
-                {data.currentWeight && <span style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>kg</span>}
-                {data.weightChange != 0 && data.weightChange != null && (
-                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: data.weightChange > 0 ? 'var(--red)' : 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                    {data.weightChange > 0 ? `▲ +${data.weightChange}` : `▼ ${data.weightChange}`} kg
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: '0.3rem' }}>Started at {data.startingWeight ?? '—'} kg</div>
-            </div>
-
-            <div className="card-flat animate-fade-up stagger-3">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.75rem' }}>
-                <ChefHat size={14} color="var(--text-dim)" />
-                <span className="section-label" style={{ margin: 0 }}>Overview</span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-                {/* Streak */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', alignItems: 'center' }}>
-                  <span style={{ color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <Zap size={12} color={streak >= 3 ? 'var(--gold)' : 'var(--text-dim)'} />
-                    Logging streak
-                  </span>
-                  <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem', color: streak >= 7 ? 'var(--gold)' : streak >= 3 ? 'var(--accent)' : 'var(--text-main)' }}>
-                    {streak} {streak === 1 ? 'day' : 'days'}
-                  </span>
-                </div>
-                {/* 7-day avg with bar */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                    <span style={{ color: 'var(--text-sub)' }}>7-day avg</span>
-                    <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem', color: avgColor }}>{avgCals} kcal</span>
-                  </div>
-                  <div style={{ height: '4px', background: 'var(--surface2)', borderRadius: '999px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: avgColor, width: `${avgPct}%`, transition: 'width 1s cubic-bezier(0.4,0,0.2,1)' }} />
-                  </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                    {avgCals > GOAL ? `▲ ${avgCals - GOAL} over goal` : `▼ ${GOAL - avgCals} under goal`}
-                  </div>
-                </div>
-                {/* Saved recipes */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                  <span style={{ color: 'var(--text-sub)' }}>Saved recipes</span>
-                  <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem' }}>{data.recipesSaved}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Charts */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
-            <div className="card animate-fade-up stagger-4" style={{ height: '280px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '1.5rem', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                  <Flame size={14} color="var(--text-dim)" />
-                  <span className="section-label" style={{ margin: 0 }}>Calories — 30d</span>
-                </div>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>tap bar to view</span>
-              </div>
-              {data.chartData && data.chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="80%">
-                  <ComposedChart
-                    data={data.chartData}
-                    barSize={data.chartData.length > 14 ? 8 : 18}
-                    onClick={e => { if (e?.activePayload?.[0]?.payload?.date) setViewingDate(e.activePayload[0].payload.date); }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-dim)', fontFamily: 'Plus Jakarta Sans' }} interval={data.chartData.length > 14 ? 6 : 0} />
-                    <Tooltip
-                      cursor={{ fill: 'var(--accent-light)' }}
-                      contentStyle={{ background: 'white', border: '1px solid var(--border)', borderRadius: '10px', fontFamily: 'Plus Jakarta Sans', fontSize: '0.82rem', boxShadow: 'var(--shadow-md)' }}
-                      formatter={(val) => [`${val} kcal`, 'Calories']}
-                    />
-                    <Bar dataKey="Calories" radius={[4, 4, 0, 0]}>
-                      {data.chartData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={entry.date === selectedDate ? 'var(--gold)' : entry.Calories > GOAL ? 'var(--red-light)' : 'var(--accent)'}
-                        />
-                      ))}
-                    </Bar>
-                  </ComposedChart>
-                </ResponsiveContainer>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '75%', color: 'var(--text-dim)', fontSize: '0.85rem', flexDirection: 'column', gap: '0.5rem' }}>
-                  <Beef size={28} strokeWidth={1.5} />
-                  Start logging to see charts
-                </div>
-              )}
-            </div>
-
-            {/* ── Weight Trend Chart ── */}
-            <div className="card animate-fade-up stagger-5" style={{ height: '280px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.6rem', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                  <TrendingDown size={14} color="var(--text-dim)" />
-                  <span className="section-label" style={{ margin: 0 }}>Weight Trend</span>
-                </div>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>● = has photo</span>
-              </div>
-
-              {/* ── Trend summary strip ── */}
-              {weightInsights && (
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                    background: weightInsights.weeklyDiff < 0 ? 'rgba(0,150,136,0.08)' : 'rgba(229,57,53,0.08)',
-                    borderRadius: '999px', padding: '0.2rem 0.65rem',
-                    fontSize: '0.72rem', fontWeight: 700,
-                    color: weightInsights.weeklyDiff < 0 ? 'var(--accent)' : 'var(--red)',
-                  }}>
-                    {weightInsights.weeklyDiff < 0
-                      ? `▼ Lost ${Math.abs(weightInsights.weeklyDiff)} kg this week`
-                      : weightInsights.weeklyDiff > 0
-                        ? `▲ Gained ${weightInsights.weeklyDiff} kg this week`
-                        : '— No change this week'}
-                  </div>
-                  {weightInsights.projectedDate && (
-                    <div style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                      background: 'rgba(255,152,0,0.08)',
-                      borderRadius: '999px', padding: '0.2rem 0.65rem',
-                      fontSize: '0.72rem', fontWeight: 700,
-                      color: '#e65100',
-                    }}>
-                      <Target size={10} />
-                      {WEIGHT_TARGET} kg by {weightInsights.projectedDate}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {data.weightLogData && data.weightLogData.length > 1 ? (
-                <ResponsiveContainer width="100%" height="72%">
-                  <LineChart
-                    data={data.weightLogData}
-                    onClick={d => {
-                      if (d?.activePayload?.[0]?.payload?.hasPhoto)
-                        setPhotoLog(d.activePayload[0].payload.fullLog);
-                    }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-dim)', fontFamily: 'Plus Jakarta Sans' }} />
-                    <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false} width={34} tick={{ fontSize: 11, fill: 'var(--text-dim)' }} />
-                    <Tooltip content={<WeightTooltip />} />
-                    <ReferenceLine
-                      y={WEIGHT_TARGET}
-                      stroke="#f59e0b"
-                      strokeDasharray="5 4"
-                      strokeWidth={1.5}
-                      label={{ value: `Goal ${WEIGHT_TARGET}kg`, position: 'insideTopRight', fontSize: 10, fill: '#f59e0b', fontWeight: 700, fontFamily: 'Plus Jakarta Sans' }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="Weight"
-                      stroke="var(--accent)"
-                      strokeWidth={2.5}
-                      dot={<WeightDot />}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '75%', color: 'var(--text-dim)', fontSize: '0.85rem', flexDirection: 'column', gap: '0.5rem' }}>
-                  <Scale size={28} strokeWidth={1.5} />
-                  Log 2+ weights to see trend
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </main>
-  );
-}
+                <div style={{ height: '100%', background: (displayMacros?.cals || 0) > GOAL ? 'var(--red)' : 'var(--accent)', width: `${Math.min(100, ((displayMacros?.cals || 0) / GOAL) * 100)}%`, transition: 'width 1s cubic-bezier(
