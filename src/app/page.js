@@ -186,7 +186,6 @@ function DayModal({ date, onClose, GOAL }) {
                       <span style={{ color: '#c62828' }}>F {log.fat}g</span>
                       <span style={{ marginLeft: 'auto', color: '#999' }}>{log.portions_eaten} {log.portions_eaten === 1 ? 'portion' : 'portions'}</span>
                     </div>
-                    {/* Ingredient breakdown inside DayModal */}
                     {log.ingredients?.length > 0 && (
                       <div style={{ marginTop: '0.6rem', paddingTop: '0.5rem', borderTop: '1px solid #e8e8e8' }}>
                         {log.ingredients.map((ing, i) => {
@@ -381,6 +380,16 @@ export default function Home() {
   const avgPct = Math.min(100, (avgCals / GOAL) * 100);
   const avgColor = avgCals > GOAL ? 'var(--red)' : 'var(--accent)';
 
+  const progressBarStyle = {
+    height: '100%',
+    background: (displayMacros?.cals || 0) > GOAL ? 'var(--red)' : 'var(--accent)',
+    width: `${Math.min(100, ((displayMacros?.cals || 0) / GOAL) * 100)}%`,
+    transition: 'width 1s ease',
+    borderRadius: '999px',
+  };
+
+  const proteinPct = Math.min(100, ((data?.todayMacros?.p || 0) / PROTEIN_GOAL) * 100);
+
   return (
     <main>
       {viewingDate && <DayModal date={viewingDate} onClose={() => setViewingDate(null)} GOAL={GOAL} />}
@@ -452,4 +461,170 @@ export default function Home() {
                 </span>
               </div>
               <div style={{ height: '8px', background: 'var(--surface2)', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: (displayMacros?.cals || 0) > GOAL ? 'var(--red)' : 'var(--accent)', width: `${Math.min(100, ((displayMacros?.cals || 0) / GOAL) * 100)}%`, transition: 'width 1s cubic-bezier(
+                <div style={progressBarStyle} />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+              {[
+                { label: 'Protein', val: data?.todayMacros?.p ?? '—', goal: goals.protein_goal, unit: 'g', color: 'var(--blue)' },
+                { label: 'Carbs', val: data?.todayMacros?.c ?? '—', goal: goals.carbs_goal, unit: 'g', color: 'var(--gold)' },
+                { label: 'Fat', val: data?.todayMacros?.f ?? '—', goal: goals.fat_goal, unit: 'g', color: 'var(--red)' },
+              ].map(m => (
+                <div key={m.label} style={{ background: 'var(--surface2)', borderRadius: '12px', padding: '0.75rem' }}>
+                  <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.4rem', color: m.color, lineHeight: 1 }}>{m.val}<span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'Plus Jakarta Sans', marginLeft: '2px' }}>{m.unit}</span></div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: '0.25rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{m.label}</div>
+                  {m.goal && (
+                    <div style={{ marginTop: '0.4rem', height: '3px', background: 'var(--border)', borderRadius: '99px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', background: m.color, width: `${Math.min(100, ((Number(m.val) || 0) / m.goal) * 100)}%`, borderRadius: '99px' }} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Stats Row */}
+          <div className="stats-row animate-fade-up stagger-2">
+            <div className="stat-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                <Target size={13} color="var(--accent)" />
+                <span className="stat-label" style={{ margin: 0 }}>Streak</span>
+              </div>
+              <div className="stat-value">{streak}<span style={{ fontSize: '1rem', color: 'var(--text-dim)' }}> days</span></div>
+            </div>
+            <div className="stat-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                <Zap size={13} color="var(--gold)" />
+                <span className="stat-label" style={{ margin: 0 }}>7-day avg</span>
+              </div>
+              <div className="stat-value" style={{ color: avgColor }}>{Math.round(avgCals)}<span style={{ fontSize: '1rem', color: 'var(--text-dim)' }}> kcal</span></div>
+              <div style={{ marginTop: '0.5rem', height: '3px', background: 'var(--border)', borderRadius: '99px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', background: avgColor, width: `${avgPct}%`, borderRadius: '99px' }} />
+              </div>
+            </div>
+            <div className="stat-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                <Scale size={13} color="var(--text-dim)" />
+                <span className="stat-label" style={{ margin: 0 }}>Weight</span>
+              </div>
+              <div className="stat-value">
+                {weightInsights ? weightInsights.currentWeight : '—'}
+                <span style={{ fontSize: '1rem', color: 'var(--text-dim)' }}> kg</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Calorie Chart */}
+          {data?.chartData?.length > 0 && (
+            <div className="card animate-fade-up stagger-3">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <TrendingDown size={16} color="var(--accent)" strokeWidth={2} />
+                  <span className="section-label" style={{ margin: 0 }}>7-Day Calories</span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Goal: {GOAL} kcal</div>
+              </div>
+              <ResponsiveContainer width="100%" height={160}>
+                <ComposedChart data={data.chartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }} onClick={e => { if (e?.activePayload?.[0]) setViewingDate(e.activePayload[0].payload.date); }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-dim)' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: 'var(--text-dim)' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const v = payload[0]?.value;
+                    return (
+                      <div className="custom-tooltip">
+                        <div style={{ fontWeight: 700, marginBottom: '2px' }}>{label}</div>
+                        <div style={{ color: v > GOAL ? 'var(--red)' : 'var(--accent)' }}>{v} kcal</div>
+                      </div>
+                    );
+                  }} />
+                  <ReferenceLine y={GOAL} stroke="var(--accent)" strokeDasharray="4 4" strokeOpacity={0.5} />
+                  <Bar dataKey="Calories" radius={[6, 6, 0, 0]} maxBarSize={48} cursor="pointer">
+                    {data.chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.Calories > GOAL ? 'var(--red)' : entry.date === selectedDate ? 'var(--accent)' : '#c8dece'} />
+                    ))}
+                  </Bar>
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Weight Chart */}
+          {data?.weightLogData?.length > 1 && (
+            <div className="card animate-fade-up stagger-4">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Scale size={16} color="var(--accent)" strokeWidth={2} />
+                  <span className="section-label" style={{ margin: 0 }}>Weight Progress</span>
+                </div>
+                <Link href="/weight" style={{ fontSize: '0.78rem', color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>Log weight →</Link>
+              </div>
+              {weightInsights && (
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: '0.8rem', color: weightInsights.weeklyDiff < 0 ? 'var(--accent)' : weightInsights.weeklyDiff > 0 ? 'var(--red)' : 'var(--text-dim)' }}>
+                    {weightInsights.weeklyDiff > 0 ? '+' : ''}{weightInsights.weeklyDiff} kg this week
+                  </div>
+                  {weightInsights.projectedDate && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                      Target {WEIGHT_TARGET}kg by ~{weightInsights.projectedDate}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>BMI {weightInsights.bmi}</div>
+                </div>
+              )}
+              <ResponsiveContainer width="100%" height={160}>
+                <LineChart data={data.weightLogData} margin={{ top: 4, right: 8, left: -28, bottom: 0 }}
+                  onClick={e => {
+                    const p = e?.activePayload?.[0]?.payload;
+                    if (p?.hasPhoto) setPhotoLog({ id: p.id, date: p.rawDate, weight_kg: p.Weight, photo_url: p.photo_url });
+                  }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-dim)' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: 'var(--text-dim)' }} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
+                  <Tooltip content={<WeightTooltip />} />
+                  <ReferenceLine y={WEIGHT_TARGET} stroke="var(--accent)" strokeDasharray="4 4" strokeOpacity={0.4} label={{ value: `Goal ${WEIGHT_TARGET}kg`, position: 'insideTopRight', fontSize: 10, fill: 'var(--accent)' }} />
+                  <Line type="monotone" dataKey="Weight" stroke="var(--accent)" strokeWidth={2.5} dot={<WeightDot />} activeDot={{ r: 6, fill: 'var(--accent)' }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Protein Progress */}
+          {PROTEIN_GOAL > 0 && (
+            <div className="card animate-fade-up">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Beef size={15} color="var(--blue)" strokeWidth={2} />
+                  <span className="section-label" style={{ margin: 0 }}>Protein Today</span>
+                </div>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>{data?.todayMacros?.p ?? 0}g / {PROTEIN_GOAL}g</span>
+              </div>
+              <div style={{ height: '10px', background: 'var(--surface2)', borderRadius: '99px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', background: proteinPct >= 100 ? 'var(--accent)' : 'var(--blue)', width: `${proteinPct}%`, borderRadius: '99px', transition: 'width 1s ease' }} />
+              </div>
+              {proteinPct >= 100 && (
+                <div style={{ fontSize: '0.78rem', color: 'var(--accent)', marginTop: '0.4rem', fontWeight: 600 }}>✓ Protein goal reached!</div>
+              )}
+            </div>
+          )}
+
+          {/* Quick Stats */}
+          <div className="card animate-fade-up" style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+            {[
+              { icon: <Carrot size={15} />, label: 'Ingredients', val: data?.counts?.ingredients ?? 0 },
+              { icon: <ChefHat size={15} />, label: 'Recipes', val: data?.counts?.recipes ?? 0 },
+              { icon: <UtensilsCrossed size={15} />, label: 'Meals logged', val: data?.counts?.logs ?? 0 },
+            ].map(s => (
+              <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: 'var(--accent)' }}>{s.icon}</span>
+                <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.4rem', lineHeight: 1 }}>{s.val}</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>{s.label}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </main>
+  );
+}
