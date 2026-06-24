@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Plus, Pencil, Trash2, Search, SlidersHorizontal, Carrot, Check, X } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Search, SlidersHorizontal, Carrot, Check, X, AlertTriangle } from 'lucide-react';
 import { showToast } from '../../components/ToastContainer';
 import { useSupabaseRealtime } from '../../hooks/useSupabaseRealtime';
 
@@ -26,7 +26,6 @@ export default function IngredientsPage() {
   const [extResults, setExtResults] = useState([]);
   const [extLoading, setExtLoading] = useState(false);
   const [showExt, setShowExt] = useState(false);
-  const [extSource, setExtSource] = useState('both');
   const [filterCat, setFilterCat] = useState('All');
   const [error, setError]       = useState('');
   const [seeding, setSeeding]   = useState(false);
@@ -48,7 +47,6 @@ export default function IngredientsPage() {
       const newStr = JSON.stringify(data);
       const oldStr = JSON.stringify(ingredientsRef.current);
       
-      // Only update DOM if the data actually changed
       if (newStr !== oldStr) {
         setIngredients(data);
         ingredientsRef.current = data;
@@ -62,23 +60,6 @@ export default function IngredientsPage() {
     }
   }
 
-  async function seedIngredients() {
-    try {
-      setSeeding(true);
-      setError('');
-      const res = await fetch('/api/seed');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not load starter ingredients');
-      showToast(`Starter ingredients loaded (${data.added} added)`);
-      await fetchIngredients();
-    } catch (e) {
-      console.error(e);
-      setError(e.message);
-    } finally {
-      setSeeding(false);
-    }
-  }
-
   function openAdd()    { setEditId(null); setForm(blank); setShowForm(true); }
   function openEdit(i)  {
     setEditId(i.id);
@@ -89,7 +70,6 @@ export default function IngredientsPage() {
   }
 
   function nutritionPayload() {
-    // Values are entered as per-100g directly now.
     const toNumOrEmpty = v => {
       const n = parseFloat(v);
       return Number.isFinite(n) ? n : '';
@@ -145,7 +125,7 @@ export default function IngredientsPage() {
         </div>
       </div>
 
-      {/* Add Form (Only for new items now) */}
+      {/* Add Form */}
       {showForm && !editId && (
         <div className="card animate-slide-down" style={{ borderColor: 'var(--accent)', marginBottom: '2rem' }}>
           <div className="section-label green">New Ingredient</div>
@@ -179,14 +159,14 @@ export default function IngredientsPage() {
             </div>
             {['calories_100g', 'protein_100g'].map(key => (
               <div key={key} className="form-group">
-                <label>{key.replace('_100g', '').replace('_', ' ')} / label</label>
+                <label>{key.replace('_100g', '').replace('_', ' ')} / 100g</label>
                 <input required type="number" step="any" className="form-input" value={form[key]}
                   onChange={e => setForm({ ...form, [key]: e.target.value })} />
               </div>
             ))}
             {['carbs_100g', 'fat_100g'].map(key => (
               <div key={key} className="form-group">
-                <label>{key.replace('_100g', '').replace('_', ' ')} / label <span style={{color:'var(--text-dim)',fontWeight:400}}>(opt)</span></label>
+                <label>{key.replace('_100g', '').replace('_', ' ')} / 100g <span style={{color:'var(--text-dim)',fontWeight:400}}>(opt)</span></label>
                 <input type="number" step="any" className="form-input" value={form[key]}
                   onChange={e => setForm({ ...form, [key]: e.target.value })} />
               </div>
@@ -227,67 +207,87 @@ export default function IngredientsPage() {
           </select>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <button className="btn" onClick={() => setShowExt(s => !s)}>{showExt ? 'Hide DB Search' : 'Search DB'}</button>
-          </div>
-        
+          <button className="btn" onClick={() => setShowExt(s => !s)}>{showExt ? 'Hide DB Search' : 'Search DB'}</button>
+        </div>
         <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{visible.length} items</span>
       </div>
 
       {showExt && (
         <div className="card" style={{ marginBottom: '1rem' }}>
+          <div style={{ marginBottom: '0.5rem', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+            Search by name or paste a barcode number (8–14 digits)
+          </div>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <input className="form-input" placeholder="Search OpenFoodFacts (query or barcode)" value={extQuery} onChange={e => setExtQuery(e.target.value)} style={{ flex: 1 }} />
+            <input
+              className="form-input"
+              placeholder="e.g. Chicken Breast or 5000112637922"
+              value={extQuery}
+              onChange={e => setExtQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && e.currentTarget.nextElementSibling?.click()}
+              style={{ flex: 1 }}
+            />
             <button className="btn" onClick={async () => {
               try {
                 setExtLoading(true); setExtResults([]);
                 const q = extQuery.trim();
                 if (!q) { setExtResults([]); return; }
-                // detect barcode: numeric and length 8-13
-                const isBarcode = /^\d{8,13}$/.test(q);
-                const url = isBarcode ? `/api/ingredients/search?barcode=${encodeURIComponent(q)}` : `/api/ingredients/search?q=${encodeURIComponent(q)}`;
+                // detect barcode: numeric and length 8-14
+                const isBarcode = /^\d{8,14}$/.test(q);
+                const url = isBarcode
+                  ? `/api/ingredients/search?barcode=${encodeURIComponent(q)}`
+                  : `/api/ingredients/search?q=${encodeURIComponent(q)}`;
                 const res = await fetch(url).then(r => r.json()).catch(() => []);
                 const all = Array.isArray(res) ? res.filter(Boolean) : [];
-                // For OpenFoodFacts-only results, just normalize names and dedupe by normalized name
                 const normalize = n => (n || '').toString().trim().toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
                 const map = new Map();
                 for (const item of all) {
-                  const key = normalize(item.name || '') || Math.random().toString(36).slice(2,9);
+                  const key = normalize(item.name || '') || Math.random().toString(36).slice(2, 9);
                   if (!map.has(key)) map.set(key, { ...item, sources: new Set([item.source || 'openfoodfacts']) });
                   else {
                     const ex = map.get(key);
-                    for (const f of ['calories_100g','protein_100g','carbs_100g','fat_100g','serving_label','serving_grams']) {
+                    for (const f of ['calories_100g', 'protein_100g', 'carbs_100g', 'fat_100g', 'serving_label', 'serving_grams']) {
                       if ((ex[f] === undefined || ex[f] === '' || ex[f] === null) && (item[f] !== undefined && item[f] !== null && item[f] !== '')) ex[f] = item[f];
                     }
                     if (!ex.brand && item.brand) ex.brand = item.brand;
                     ex.sources.add(item.source || 'openfoodfacts');
                   }
                 }
-                const merged = Array.from(map.values()).map(it => ({ ...it, source: Array.from(it.sources).join(','), id: it.id || Math.random().toString(36).slice(2,9) }));
+                const merged = Array.from(map.values()).map(it => ({ ...it, source: Array.from(it.sources).join(','), id: it.id || Math.random().toString(36).slice(2, 9) }));
                 setExtResults(merged);
               } catch (e) { console.error(e); setExtResults([]); }
               finally { setExtLoading(false); }
             }}>{extLoading ? 'Searching...' : 'Search'}</button>
           </div>
           <div style={{ marginTop: '0.75rem' }}>
-            {extResults.length === 0 ? (
-              <div style={{ color: 'var(--text-dim)' }}>No results</div>
+            {extResults.length === 0 && !extLoading ? (
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>No results</div>
             ) : (
               <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {extResults.map(r => (
-                  <li key={`${r.source || 'off'}-${r.id}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--surface2)' }}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{r.name} <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>({r.source || 'openfoodfacts'})</span></div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>{r.brand || ''} {r.serving_label ? `· ${r.serving_label}` : r.serving_grams ? `· ${r.serving_grams} g` : ''}</div>
+                  <li key={`${r.source || 'off'}-${r.id}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid var(--surface2)', gap: '0.5rem', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{r.name}</div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                        {r.brand || ''}{r.brand && r.serving_label ? ' · ' : ''}{r.serving_label ? r.serving_label : r.serving_grams ? `${r.serving_grams}g` : ''}
+                      </div>
+                      {/* Zero nutrition warning */}
+                      {r.nutrition_incomplete && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.3rem', fontSize: '0.75rem', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '0.2rem 0.5rem', width: 'fit-content' }}>
+                          <AlertTriangle size={11} />
+                          Nutrition data missing from source
+                        </div>
+                      )}
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <div style={{ textAlign: 'right', fontSize: '0.9rem' }}>
-                        <div style={{ fontWeight: 700 }}>{r.calories_100g ?? '—'}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{r.protein_100g ? `${r.protein_100g} g protein` : ''}</div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexShrink: 0 }}>
+                      <div style={{ textAlign: 'right', fontSize: '0.88rem' }}>
+                        <div style={{ fontWeight: 700, color: r.nutrition_incomplete ? 'var(--text-dim)' : 'var(--accent)' }}>
+                          {r.calories_100g !== null && r.calories_100g !== undefined ? r.calories_100g : '—'} kcal
+                        </div>
+                        {r.protein_100g !== null && <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>{r.protein_100g}g protein</div>}
                       </div>
                       <button className="btn" onClick={() => {
-                        // import into add form (prefer serving_label, fallback to grams)
                         const servingVal = r.serving_label || (r.serving_grams ? String(r.serving_grams) : '100');
-                        setForm({ ...blank, name: r.name, brand: r.brand || '', category: r.category || 'Other', status: 'Raw', serving_g: servingVal, calories_100g: r.calories_100g || '', protein_100g: r.protein_100g || '', carbs_100g: r.carbs_100g || '', fat_100g: r.fat_100g || '', price_kg: '', notes: '' });
+                        setForm({ ...blank, name: r.name, brand: r.brand || '', category: r.category || 'Other', status: 'Raw', serving_g: servingVal, calories_100g: r.calories_100g ?? '', protein_100g: r.protein_100g ?? '', carbs_100g: r.carbs_100g ?? '', fat_100g: r.fat_100g ?? '', price_kg: '', notes: '' });
                         setShowForm(true);
                         setShowExt(false);
                       }}>Import</button>
@@ -320,15 +320,15 @@ export default function IngredientsPage() {
           <table className="data-table" style={{ margin: 0 }}>
             <thead>
               <tr>
-                  <th style={{ paddingLeft: '1.75rem', textAlign: 'left' }}>Name</th>
-                  <th style={{ textAlign: 'center' }}>Category</th>
-                  <th style={{ textAlign: 'center' }}>Cal</th>
-                  <th style={{ textAlign: 'center' }}>Protein</th>
-                  <th style={{ textAlign: 'center' }}>Carbs</th>
-                  <th style={{ textAlign: 'center' }}>Fat</th>
-                  <th style={{ textAlign: 'center' }}>Status</th>
-                  <th style={{ paddingRight: '1.75rem', textAlign: 'right' }}>Actions</th>
-                </tr>
+                <th style={{ paddingLeft: '1.75rem', textAlign: 'left' }}>Name</th>
+                <th style={{ textAlign: 'center' }}>Category</th>
+                <th style={{ textAlign: 'center' }}>Cal</th>
+                <th style={{ textAlign: 'center' }}>Protein</th>
+                <th style={{ textAlign: 'center' }}>Carbs</th>
+                <th style={{ textAlign: 'center' }}>Fat</th>
+                <th style={{ textAlign: 'center' }}>Status</th>
+                <th style={{ paddingRight: '1.75rem', textAlign: 'right' }}>Actions</th>
+              </tr>
             </thead>
             <tbody>
               {visible.map(ing => (
@@ -363,7 +363,7 @@ export default function IngredientsPage() {
                         {ing.serving_label ? (
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>per {ing.serving_label}</div>
                         ) : ing.serving_grams ? (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>per {ing.serving_grams} g</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>per {ing.serving_grams}g</div>
                         ) : (
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>per 100g</div>
                         )}

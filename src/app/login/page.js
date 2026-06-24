@@ -1,22 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lock, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-
-  // If already authenticated, go home
-  useEffect(() => {
-    if (typeof window !== 'undefined' && localStorage.getItem('mt_auth') === 'yes') {
-      router.replace('/');
-    }
-  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -26,11 +20,10 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, rememberMe }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
-        localStorage.setItem('mt_auth', 'yes');
         router.replace('/');
       } else {
         setError('Wrong password. Try again.');
@@ -102,6 +95,21 @@ export default function LoginPage() {
             </button>
           </div>
 
+          {/* Remember Me */}
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            fontSize: '0.85rem', color: 'var(--text-sub)',
+            cursor: 'pointer', marginBottom: '1rem', userSelect: 'none',
+          }}>
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={e => setRememberMe(e.target.checked)}
+              style={{ width: '15px', height: '15px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+            />
+            Remember me for 30 days
+          </label>
+
           {error && (
             <div style={{
               background: '#fff0f0', border: '1px solid #fca5a5',
@@ -122,10 +130,6 @@ export default function LoginPage() {
             {loading ? 'Checking…' : 'Enter'}
           </button>
         </form>
-
-        <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '1.5rem' }}>
-          Browser will remember you automatically.
-        </p>
       </div>
     </div>
   );

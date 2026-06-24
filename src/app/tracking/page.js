@@ -16,6 +16,8 @@ export default function DailyTracking() {
   const [ingredients, setIngredients] = useState([]);
   const [logMode, setLogMode] = useState('recipe');
   const [expandedLog, setExpandedLog] = useState(null);
+  // Store full day detail from history API for expanded logs
+  const [dayDetails, setDayDetails] = useState({});
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
     meal_type: 'Breakfast', recipe_id: '', portions_eaten: '1',
@@ -47,6 +49,16 @@ export default function DailyTracking() {
     fetchData
   );
 
+  async function fetchDayDetail(date) {
+    if (dayDetails[date]) return; // already fetched
+    try {
+      const data = await fetch(`/api/history?date=${date}`).then(r => r.json());
+      setDayDetails(prev => ({ ...prev, [date]: data }));
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (logMode === 'recipe' && !form.recipe_id) return;
@@ -65,15 +77,28 @@ export default function DailyTracking() {
     if (res.ok) {
       const newLogs = await (await fetch('/api/daily')).json();
       setLogs(newLogs);
+      // Invalidate the cached day detail so it refreshes
+      setDayDetails(prev => { const copy = { ...prev }; delete copy[form.date]; return copy; });
       showToast('Meal logged');
       setForm(f => ({ ...f, quick_add_name: '', quick_add_calories: '', recipe_id: '', ingredient_id: '', weight_g: '100' }));
     }
   }
 
   async function handleDelete(id) {
+    const log = logs.find(l => l.id === id);
     await fetch(`/api/daily/${id}`, { method: 'DELETE' });
     setLogs(logs.filter(l => l.id !== id));
+    if (log) setDayDetails(prev => { const copy = { ...prev }; delete copy[log.date]; return copy; });
     showToast('Meal deleted');
+  }
+
+  async function handleExpand(log) {
+    if (expandedLog === log.id) {
+      setExpandedLog(null);
+      return;
+    }
+    setExpandedLog(log.id);
+    await fetchDayDetail(log.date);
   }
 
   const grouped = logs.reduce((acc, log) => {
@@ -105,9 +130,11 @@ export default function DailyTracking() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
             <div className="section-label" style={{ margin: 0 }}>Log a Meal</div>
             <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--surface2)', borderRadius: '99px', padding: '0.2rem' }}>
-              <button type="button" onClick={() => setLogMode('recipe')} className="btn" style={{ padding: '0.4rem 1rem', background: logMode === 'recipe' ? 'var(--card-bg)' : 'transparent', color: logMode === 'recipe' ? 'var(--text-main)' : 'var(--text-dim)', fontSize: '0.85rem', boxShadow: logMode === 'recipe' ? 'var(--shadow-sm)' : 'none', border: 'none' }}>Recipe</button>
-              <button type="button" onClick={() => setLogMode('ingredient')} className="btn" style={{ padding: '0.4rem 1rem', background: logMode === 'ingredient' ? 'var(--card-bg)' : 'transparent', color: logMode === 'ingredient' ? 'var(--text-main)' : 'var(--text-dim)', fontSize: '0.85rem', boxShadow: logMode === 'ingredient' ? 'var(--shadow-sm)' : 'none', border: 'none' }}>Ingredient</button>
-              <button type="button" onClick={() => setLogMode('quick_add')} className="btn" style={{ padding: '0.4rem 1rem', background: logMode === 'quick_add' ? 'var(--card-bg)' : 'transparent', color: logMode === 'quick_add' ? 'var(--text-main)' : 'var(--text-dim)', fontSize: '0.85rem', boxShadow: logMode === 'quick_add' ? 'var(--shadow-sm)' : 'none', border: 'none' }}>Quick Add</button>
+              {['recipe', 'ingredient', 'quick_add'].map(mode => (
+                <button key={mode} type="button" onClick={() => setLogMode(mode)} className="btn" style={{ padding: '0.4rem 1rem', background: logMode === mode ? 'var(--card-bg)' : 'transparent', color: logMode === mode ? 'var(--text-main)' : 'var(--text-dim)', fontSize: '0.85rem', boxShadow: logMode === mode ? 'var(--shadow-sm)' : 'none', border: 'none' }}>
+                  {mode === 'quick_add' ? 'Quick Add' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                </button>
+              ))}
             </div>
           </div>
           <form onSubmit={handleSubmit} className="log-form-grid">
@@ -191,8 +218,10 @@ export default function DailyTracking() {
               {data.entries.map(log => {
                 const Icon = MEAL_ICONS[log.meal_type] || UtensilsCrossed;
                 const isExpanded = expandedLog === log.id;
-                // Find recipe details from our loaded recipes list
-                const recipeDetail = recipes.find(r => r.id === log.recipe_id);
+                // Get full log details from history API (has ingredients)
+                const dayData = dayDetails[log.date];
+                const fullLog = dayData?.logs?.find(l => l.id === log.id);
+                const logIngredients = fullLog?.ingredients || [];
 
                 return (
                   <div key={log.id} style={{ background: 'var(--surface2)', borderRadius: '12px', overflow: 'hidden' }}>
@@ -204,23 +233,23 @@ export default function DailyTracking() {
                           {log.recipe_name}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '0.1rem' }}>
-                          {log.meal_type} · {log.portions_eaten}×
+                          {log.meal_type}{log.portions_eaten ? ` · ${log.portions_eaten}×` : ''}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem', color: 'var(--accent)', lineHeight: 1 }}>{log.calories.toFixed(0)} <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>kcal</span></div>
+                        <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem', color: 'var(--accent)', lineHeight: 1 }}>{log.calories?.toFixed(0) ?? '—'} <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>kcal</span></div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.15rem' }}>
-                          <span style={{ color: 'var(--blue)' }}>P{log.protein.toFixed(0)}</span>
+                          <span style={{ color: 'var(--blue)' }}>P{log.protein?.toFixed(0) ?? '—'}</span>
                           {' · '}
-                          <span style={{ color: 'var(--gold)' }}>C{log.carbs.toFixed(0)}</span>
+                          <span style={{ color: 'var(--gold)' }}>C{log.carbs?.toFixed(0) ?? '—'}</span>
                           {' · '}
-                          <span style={{ color: 'var(--red)' }}>F{log.fat.toFixed(0)}</span>
+                          <span style={{ color: 'var(--red)' }}>F{log.fat?.toFixed(0) ?? '—'}</span>
                         </div>
                       </div>
-                      {/* Expand button — only for recipes with ingredient details */}
-                      {recipeDetail?.ingredients?.length > 0 && (
+                      {/* Expand button — for recipe logs */}
+                      {log.recipe_id && log.recipe_id !== 'QUICK_ADD' && (
                         <button
-                          onClick={() => setExpandedLog(isExpanded ? null : log.id)}
+                          onClick={() => handleExpand(log)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: '4px', flexShrink: 0 }}
                           title="View recipe details"
                         >
@@ -232,40 +261,48 @@ export default function DailyTracking() {
                       </button>
                     </div>
 
-                    {/* Expanded recipe ingredient breakdown */}
-                    {isExpanded && recipeDetail?.ingredients?.length > 0 && (
+                    {/* Expanded ingredient breakdown — uses history API data */}
+                    {isExpanded && (
                       <div className="animate-slide-down" style={{ borderTop: '1px solid var(--border)', padding: '0.75rem 1rem 1rem', background: 'var(--card-bg)' }}>
-                        <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: '0.6rem' }}>
-                          Recipe: {recipeDetail.name} · {recipeDetail.portions} portion{recipeDetail.portions !== 1 ? 's' : ''} total
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                          {recipeDetail.ingredients.map((ing, i) => {
-                            const ratio = ing.weight_g / 100;
-                            return (
-                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
-                                <div style={{ flex: 1 }}>
-                                  <span style={{ fontWeight: 500 }}>{ing.name}</span>
-                                  <span style={{ color: 'var(--text-dim)', marginLeft: '0.4rem' }}>{ing.weight_g}g</span>
-                                </div>
-                                <div style={{ display: 'flex', gap: '0.6rem', flexShrink: 0 }}>
-                                  <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{(ing.calories_100g * ratio).toFixed(0)} kcal</span>
-                                  <span style={{ color: 'var(--blue)' }}>P{(ing.protein_100g * ratio).toFixed(1)}</span>
-                                  <span style={{ color: 'var(--gold)' }}>C{(ing.carbs_100g * ratio).toFixed(1)}</span>
-                                  <span style={{ color: 'var(--red)' }}>F{(ing.fat_100g * ratio).toFixed(1)}</span>
-                                </div>
+                        {!dayData ? (
+                          <div style={{ fontSize: '0.82rem', color: 'var(--text-dim)', textAlign: 'center', padding: '0.5rem' }}>Loading details…</div>
+                        ) : logIngredients.length === 0 ? (
+                          <div style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>No ingredient breakdown available.</div>
+                        ) : (
+                          <>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: '0.6rem' }}>
+                              {log.recipe_name} · {log.portions_eaten} portion{log.portions_eaten !== 1 ? 's' : ''}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                              {logIngredients.map((ing, i) => {
+                                const ratio = ing.weight_g / 100;
+                                return (
+                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
+                                    <div style={{ flex: 1 }}>
+                                      <span style={{ fontWeight: 500 }}>{ing.ing_name}</span>
+                                      <span style={{ color: 'var(--text-dim)', marginLeft: '0.4rem' }}>{ing.weight_g}g</span>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.6rem', flexShrink: 0 }}>
+                                      <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{(ing.calories_100g * ratio).toFixed(0)} kcal</span>
+                                      <span style={{ color: 'var(--blue)' }}>P{(ing.protein_100g * ratio).toFixed(1)}</span>
+                                      <span style={{ color: 'var(--gold)' }}>C{(ing.carbs_100g * ratio).toFixed(1)}</span>
+                                      <span style={{ color: 'var(--red)' }}>F{(ing.fat_100g * ratio).toFixed(1)}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div style={{ marginTop: '0.6rem', paddingTop: '0.6rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                              <span style={{ color: 'var(--text-dim)' }}>This serving total</span>
+                              <div style={{ display: 'flex', gap: '0.6rem' }}>
+                                <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{log.calories?.toFixed(0)} kcal</span>
+                                <span style={{ color: 'var(--blue)' }}>P{log.protein?.toFixed(1)}</span>
+                                <span style={{ color: 'var(--gold)' }}>C{log.carbs?.toFixed(1)}</span>
+                                <span style={{ color: 'var(--red)' }}>F{log.fat?.toFixed(1)}</span>
                               </div>
-                            );
-                          })}
-                        </div>
-                        <div style={{ marginTop: '0.6rem', paddingTop: '0.6rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                          <span style={{ color: 'var(--text-dim)' }}>Full recipe total</span>
-                          <div style={{ display: 'flex', gap: '0.6rem' }}>
-                            <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{Math.round(recipeDetail.totalCals)} kcal</span>
-                            <span style={{ color: 'var(--blue)' }}>P{recipeDetail.totalP.toFixed(1)}</span>
-                            <span style={{ color: 'var(--gold)' }}>C{recipeDetail.totalC.toFixed(1)}</span>
-                            <span style={{ color: 'var(--red)' }}>F{recipeDetail.totalF.toFixed(1)}</span>
-                          </div>
-                        </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

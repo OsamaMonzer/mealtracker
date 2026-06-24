@@ -23,26 +23,20 @@ function toNumber(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-// OFf sometimes stores energy in kJ instead of kcal — detect & convert
 function resolveCalories(nutr, servingGrams) {
-  // Try explicit kcal per 100g first
   let val = toNumber(nutr['energy-kcal_100g']);
   if (val !== null && val > 0) return Math.round(val);
 
-  // Try per-serving kcal then convert
   const servKcal = toNumber(nutr['energy-kcal_serving']);
   if (servKcal !== null && servKcal > 0 && servingGrams) {
     return Math.round((servKcal / servingGrams) * 100);
   }
 
-  // Fallback: energy_100g — check if kJ (>900 for normal foods) and divide by 4.184
   const raw100 = toNumber(nutr['energy_100g']);
   if (raw100 !== null && raw100 > 0) {
-    // heuristic: kcal values for food are almost never above 900; kJ values usually are
     return raw100 > 900 ? Math.round(raw100 / 4.184) : Math.round(raw100);
   }
 
-  // Last resort: energy_serving
   const rawServ = toNumber(nutr['energy_serving'] ?? nutr['energy']);
   if (rawServ !== null && rawServ > 0 && servingGrams) {
     const per100 = (rawServ / servingGrams) * 100;
@@ -68,11 +62,32 @@ function mapProduct(p) {
   const servingGrams = serv.grams;
 
   const calories = resolveCalories(nutr, servingGrams);
-  const protein = per100From(nutr['proteins_100g'] ?? nutr['protein_100g'], nutr['proteins_serving'] ?? nutr['protein_serving'], servingGrams);
-  const carbs = per100From(nutr['carbohydrates_100g'], nutr['carbohydrates_serving'] ?? nutr['carbohydrates'], servingGrams);
-  const fat = per100From(nutr['fat_100g'], nutr['fat_serving'] ?? nutr['fat'], servingGrams);
+  const protein = per100From(
+    nutr['proteins_100g'] ?? nutr['protein_100g'],
+    nutr['proteins_serving'] ?? nutr['protein_serving'],
+    servingGrams
+  );
+  const carbs = per100From(
+    nutr['carbohydrates_100g'],
+    nutr['carbohydrates_serving'] ?? nutr['carbohydrates'],
+    servingGrams
+  );
+  const fat = per100From(
+    nutr['fat_100g'],
+    nutr['fat_serving'] ?? nutr['fat'],
+    servingGrams
+  );
 
-  const rawCategory = (p.categories_tags && p.categories_tags[0]) ? p.categories_tags[0].replace('en:', '').replace(/-/g, ' ') : 'Other';
+  const rawCategory = (p.categories_tags && p.categories_tags[0])
+    ? p.categories_tags[0].replace('en:', '').replace(/-/g, ' ')
+    : 'Other';
+
+  // Flag if nutrition data is incomplete / all zeros
+  const hasNutrition = calories !== null || protein !== null || carbs !== null || fat !== null;
+  const allZero = (calories === 0 || calories === null) &&
+                  (protein === 0 || protein === null) &&
+                  (carbs === 0 || carbs === null) &&
+                  (fat === 0 || fat === null);
 
   return {
     id: p.id || p.code || p._id || String(p.code || p._id),
@@ -86,6 +101,7 @@ function mapProduct(p) {
     fat_100g: fat,
     category: rawCategory,
     source: 'openfoodfacts',
+    nutrition_incomplete: !hasNutrition || allZero,
   };
 }
 
@@ -108,6 +124,23 @@ export async function GET(request) {
         console.error('Barcode lookup error', e);
         return NextResponse.json([], { status: 200 });
       }
+    }
+
+    // ── Auto-detect barcode from text query (numeric 8-14 digits) ─────────
+    if (q && /^\d{8,14}$/.test(q.trim())) {
+      try {
+        const prodUrl = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(q.trim())}.json?fields=product_name,product_name_en,generic_name,brands,serving_size,nutriments,categories_tags,code,id,_id`;
+        const pres = await fetch(prodUrl, { headers: { 'User-Agent': 'MealTracker/1.0' } });
+        if (pres.ok) {
+          const pdata = await pres.json();
+          if (pdata.status === 1 && pdata.product) {
+            return NextResponse.json([mapProduct(pdata.product)]);
+          }
+        }
+      } catch (e) {
+        console.error('Auto barcode lookup error', e);
+      }
+      // If barcode not found, fall through to text search
     }
 
     // ── Text search ───────────────────────────────────────────────────────
