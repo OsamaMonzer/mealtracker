@@ -2,11 +2,135 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, UtensilsCrossed, Sunrise, Sun, Moon, Apple, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, UtensilsCrossed, Sunrise, Sun, Moon, Apple, Plus, Trash2, ChevronDown, ChevronUp, Pencil, Check } from 'lucide-react';
 import { showToast } from '../../components/ToastContainer';
 import { useSupabaseRealtime } from '../../hooks/useSupabaseRealtime';
 
 const MEAL_ICONS = { Breakfast: Sunrise, Lunch: Sun, Dinner: Moon, Snack: Apple };
+
+// ── Edit-before-log panel ──────────────────────────────────────────────────
+// Shows when user clicks "Edit & Log" on a recipe. Lets them tweak ingredient
+// weights for that day only, without touching the saved recipe.
+function EditBeforeLogPanel({ recipe, ingredients: allIngredients, onClose, onLog }) {
+  const [rows, setRows] = useState([]);
+  const [portions, setPortions] = useState('1');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!recipe) return;
+    // Fetch this recipe's ingredients
+    fetch(`/api/recipes/${recipe.id}/ingredients`)
+      .then(r => r.json())
+      .then(data => {
+        setRows(data.map(i => ({ ...i, weight_g: String(i.weight_g) })));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [recipe?.id]);
+
+  // Live-compute totals from current rows
+  const total = rows.reduce((acc, row) => {
+    const w = parseFloat(row.weight_g) || 0;
+    const ratio = w / 100;
+    return {
+      cals: acc.cals + (row.calories_100g || 0) * ratio,
+      p:    acc.p    + (row.protein_100g  || 0) * ratio,
+      c:    acc.c    + (row.carbs_100g    || 0) * ratio,
+      f:    acc.f    + (row.fat_100g      || 0) * ratio,
+    };
+  }, { cals: 0, p: 0, c: 0, f: 0 });
+
+  const portionNum = parseFloat(portions) || 1;
+  const serving = { cals: total.cals / portionNum, p: total.p / portionNum, c: total.c / portionNum, f: total.f / portionNum };
+
+  if (!recipe) return null;
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '600px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 48px rgba(0,0,0,0.25)' }}>
+        {/* Drag handle */}
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '0.75rem 0 0' }}>
+          <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: '#e0e0e0' }} />
+        </div>
+
+        {/* Header */}
+        <div style={{ padding: '0.75rem 1.25rem 0.5rem', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>Edit for today only</div>
+          <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.3rem', color: 'var(--text-main)' }}>{recipe.name}</div>
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.4rem', fontSize: '0.78rem' }}>
+            <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{(serving.cals).toFixed(0)} kcal</span>
+            <span style={{ color: 'var(--blue)' }}>P {serving.p.toFixed(1)}g</span>
+            <span style={{ color: 'var(--gold)' }}>C {serving.c.toFixed(1)}g</span>
+            <span style={{ color: 'var(--red)' }}>F {serving.f.toFixed(1)}g</span>
+            <span style={{ color: 'var(--text-dim)' }}>per portion</span>
+          </div>
+        </div>
+
+        {/* Ingredient rows */}
+        <div style={{ overflowY: 'auto', flex: 1, padding: '0.75rem 1.25rem' }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Loading ingredients…</div>
+          ) : rows.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', fontSize: '0.85rem' }}>No ingredients found.</div>
+          ) : (
+            rows.map((row, i) => {
+              const w = parseFloat(row.weight_g) || 0;
+              const ratio = w / 100;
+              const rowCals = ((row.calories_100g || 0) * ratio).toFixed(0);
+              return (
+                <div key={row.ingredient_id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-main)' }}>{row.name}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.1rem' }}>{rowCals} kcal · P{((row.protein_100g||0)*ratio).toFixed(1)} C{((row.carbs_100g||0)*ratio).toFixed(1)} F{((row.fat_100g||0)*ratio).toFixed(1)}</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={row.weight_g}
+                      onChange={e => setRows(prev => prev.map((r, j) => j === i ? { ...r, weight_g: e.target.value } : r))}
+                      style={{ width: '64px', textAlign: 'center', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.35rem 0.4rem', fontSize: '0.85rem', fontFamily: 'Plus Jakarta Sans', background: 'var(--surface2)', color: 'var(--text-main)' }}
+                    />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>g</span>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer: portions + log button */}
+        <div style={{ padding: '0.75rem 1.25rem 1.5rem', borderTop: '1px solid var(--border)', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>Portions</label>
+            <input
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={portions}
+              onChange={e => setPortions(e.target.value)}
+              style={{ width: '60px', textAlign: 'center', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.4rem', fontSize: '0.85rem', fontFamily: 'Plus Jakarta Sans', background: 'var(--surface2)', color: 'var(--text-main)' }}
+            />
+          </div>
+          <div style={{ flex: 1, textAlign: 'right', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+            Total: <strong style={{ color: 'var(--accent)' }}>{(serving.cals * portionNum).toFixed(0)} kcal</strong>
+          </div>
+          <button
+            onClick={() => {
+              if (rows.length === 0) return;
+              onLog({ rows, portions: portionNum, recipeName: recipe.name });
+            }}
+            className="btn btn-primary"
+            style={{ flexShrink: 0 }}
+          >
+            <Check size={14} /> Log
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function DailyTracking() {
   const [logs, setLogs]       = useState([]);
@@ -16,8 +140,12 @@ export default function DailyTracking() {
   const [ingredients, setIngredients] = useState([]);
   const [logMode, setLogMode] = useState('recipe');
   const [expandedLog, setExpandedLog] = useState(null);
-  // Store full day detail from history API for expanded logs
   const [dayDetails, setDayDetails] = useState({});
+  // Edit-before-log state
+  const [editRecipe, setEditRecipe] = useState(null); // { id, name, portions }
+  const [editDate, setEditDate] = useState(null);
+  const [editMealType, setEditMealType] = useState(null);
+
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
     meal_type: 'Breakfast', recipe_id: '', portions_eaten: '1',
@@ -50,7 +178,7 @@ export default function DailyTracking() {
   );
 
   async function fetchDayDetail(date) {
-    if (dayDetails[date]) return; // already fetched
+    if (dayDetails[date]) return;
     try {
       const data = await fetch(`/api/history?date=${date}`).then(r => r.json());
       setDayDetails(prev => ({ ...prev, [date]: data }));
@@ -77,10 +205,37 @@ export default function DailyTracking() {
     if (res.ok) {
       const newLogs = await (await fetch('/api/daily')).json();
       setLogs(newLogs);
-      // Invalidate the cached day detail so it refreshes
       setDayDetails(prev => { const copy = { ...prev }; delete copy[form.date]; return copy; });
       showToast('Meal logged');
       setForm(f => ({ ...f, quick_add_name: '', quick_add_calories: '', recipe_id: '', ingredient_id: '', weight_g: '100' }));
+    }
+  }
+
+  // Called from the EditBeforeLogPanel when user taps Log
+  async function handleEditAndLog({ rows, portions, recipeName }) {
+    try {
+      const res = await fetch('/api/daily/one-off', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: editDate,
+          meal_type: editMealType,
+          recipe_name: recipeName,
+          portions,
+          ingredients: rows.map(r => ({ ingredient_id: r.ingredient_id, weight_g: parseFloat(r.weight_g) || 0 })),
+        }),
+      });
+      if (res.ok) {
+        const newLogs = await (await fetch('/api/daily')).json();
+        setLogs(newLogs);
+        setDayDetails(prev => { const copy = { ...prev }; delete copy[editDate]; return copy; });
+        showToast('Meal logged ✓');
+        setEditRecipe(null);
+      } else {
+        showToast('Failed to log', 'error');
+      }
+    } catch {
+      showToast('Failed to log', 'error');
     }
   }
 
@@ -93,10 +248,7 @@ export default function DailyTracking() {
   }
 
   async function handleExpand(log) {
-    if (expandedLog === log.id) {
-      setExpandedLog(null);
-      return;
-    }
+    if (expandedLog === log.id) { setExpandedLog(null); return; }
     setExpandedLog(log.id);
     await fetchDayDetail(log.date);
   }
@@ -111,8 +263,20 @@ export default function DailyTracking() {
     return acc;
   }, {});
 
+  // Which recipe object is selected in the form?
+  const selectedRecipe = recipes.find(r => String(r.id) === String(form.recipe_id));
+
   return (
     <main>
+      {editRecipe && (
+        <EditBeforeLogPanel
+          recipe={editRecipe}
+          ingredients={ingredients}
+          onClose={() => setEditRecipe(null)}
+          onLog={handleEditAndLog}
+        />
+      )}
+
       <div className="page-header" style={{ marginBottom: '2.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Link href="/" className="btn-icon"><ArrowLeft size={18} /></Link>
@@ -191,6 +355,25 @@ export default function DailyTracking() {
             )}
             <button type="submit" className="btn btn-primary" style={{ height: '44px', alignSelf: 'flex-end' }}>Log</button>
           </form>
+
+          {/* Edit & Log button — only shown when a recipe is selected */}
+          {logMode === 'recipe' && selectedRecipe && (
+            <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditRecipe(selectedRecipe);
+                  setEditDate(form.date);
+                  setEditMealType(form.meal_type);
+                }}
+                className="btn"
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', border: '1px dashed var(--border)', color: 'var(--text-sub)', fontSize: '0.85rem' }}
+              >
+                <Pencil size={13} />
+                Edit ingredients for today only
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -218,14 +401,12 @@ export default function DailyTracking() {
               {data.entries.map(log => {
                 const Icon = MEAL_ICONS[log.meal_type] || UtensilsCrossed;
                 const isExpanded = expandedLog === log.id;
-                // Get full log details from history API (has ingredients)
                 const dayData = dayDetails[log.date];
                 const fullLog = dayData?.logs?.find(l => l.id === log.id);
                 const logIngredients = fullLog?.ingredients || [];
 
                 return (
                   <div key={log.id} style={{ background: 'var(--surface2)', borderRadius: '12px', overflow: 'hidden' }}>
-                    {/* Main row */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.85rem 1rem' }}>
                       <Icon size={15} color="var(--text-dim)" style={{ flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -246,7 +427,6 @@ export default function DailyTracking() {
                           <span style={{ color: 'var(--red)' }}>F{log.fat?.toFixed(0) ?? '—'}</span>
                         </div>
                       </div>
-                      {/* Expand button — for recipe logs */}
                       {log.recipe_id && log.recipe_id !== 'QUICK_ADD' && (
                         <button
                           onClick={() => handleExpand(log)}
@@ -261,7 +441,6 @@ export default function DailyTracking() {
                       </button>
                     </div>
 
-                    {/* Expanded ingredient breakdown — uses history API data */}
                     {isExpanded && (
                       <div className="animate-slide-down" style={{ borderTop: '1px solid var(--border)', padding: '0.75rem 1rem 1rem', background: 'var(--card-bg)' }}>
                         {!dayData ? (

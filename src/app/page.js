@@ -279,6 +279,8 @@ export default function Home() {
 
   const GOAL = goals.calorie_goal;
   const PROTEIN_GOAL = goals.protein_goal;
+  const CARBS_GOAL = goals.carbs_goal;
+  const FAT_GOAL = goals.fat_goal;
   const WEIGHT_TARGET = goals.weight_target;
 
   async function fetchDashboard() {
@@ -380,6 +382,10 @@ export default function Home() {
   const avgPct = Math.min(100, (avgCals / GOAL) * 100);
   const avgColor = avgCals > GOAL ? 'var(--red)' : 'var(--accent)';
 
+  const todayP = data?.todayMacros?.p ?? 0;
+  const todayC = data?.todayMacros?.c ?? 0;
+  const todayF = data?.todayMacros?.f ?? 0;
+
   return (
     <main>
       {viewingDate && <DayModal date={viewingDate} onClose={() => setViewingDate(null)} GOAL={GOAL} />}
@@ -454,29 +460,36 @@ export default function Home() {
                 <div style={{ height: '100%', background: (displayMacros?.cals || 0) > GOAL ? 'var(--red)' : 'var(--accent)', width: `${Math.min(100, ((displayMacros?.cals || 0) / GOAL) * 100)}%`, transition: 'width 1s cubic-bezier(0.4,0,0.2,1)', borderRadius: '999px' }} />
               </div>
             </div>
-            <div className="stats-row" style={{ marginTop: 'auto' }}>
-              {isToday ? (
-                <>
-                  <div className="stat-item">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                      <div className="stat-value" style={{ color: 'var(--blue)' }}>
-                        {data.todayMacros.p}g
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', fontWeight: 400, marginLeft: '0.2rem' }}>/ {PROTEIN_GOAL}g</span>
-                      </div>
-                      <div style={{ height: '4px', background: 'var(--surface2)', borderRadius: '999px', overflow: 'hidden', width: '100%' }}>
-                        <div style={{ height: '100%', background: data.todayMacros.p >= PROTEIN_GOAL ? 'var(--accent)' : 'var(--blue)', width: `${Math.min(100, (data.todayMacros.p / PROTEIN_GOAL) * 100)}%`, transition: 'width 1s cubic-bezier(0.4,0,0.2,1)' }} />
-                      </div>
+
+            {/* Macro mini-cards with /goal bars */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+              {[
+                { label: 'Protein', val: todayP, goal: PROTEIN_GOAL, color: 'var(--blue)' },
+                { label: 'Carbs',   val: todayC, goal: CARBS_GOAL,   color: 'var(--gold)' },
+                { label: 'Fat',     val: todayF, goal: FAT_GOAL,     color: 'var(--red)'  },
+              ].map(m => {
+                const pct = m.goal > 0 ? Math.min(100, (Number(m.val) || 0) / m.goal * 100) : 0;
+                const reached = pct >= 100;
+                return (
+                  <div key={m.label} style={{ background: 'var(--surface2)', borderRadius: '12px', padding: '0.75rem' }}>
+                    <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.4rem', color: m.color, lineHeight: 1 }}>
+                      {isToday ? m.val : '—'}
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'Plus Jakarta Sans', marginLeft: '2px' }}>g</span>
                     </div>
-                    <div className="stat-label">Protein</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: '0.25rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{m.label}</div>
+                    {m.goal > 0 && (
+                      <>
+                        <div style={{ marginTop: '0.4rem', height: '3px', background: 'var(--border)', borderRadius: '99px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', background: reached ? 'var(--accent)' : m.color, width: `${pct}%`, borderRadius: '99px', transition: 'width 1s cubic-bezier(0.4,0,0.2,1)' }} />
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>
+                          {isToday ? `/ ${m.goal}g` : `goal ${m.goal}g`}
+                        </div>
+                      </>
+                    )}
                   </div>
-                  <div className="stat-item" style={{ borderLeft: '1px solid var(--border)' }}><div className="stat-value" style={{ color: 'var(--gold)' }}>{data.todayMacros.c}g</div><div className="stat-label">Carbs</div></div>
-                  <div className="stat-item" style={{ borderLeft: '1px solid var(--border)' }}><div className="stat-value" style={{ color: 'var(--red)' }}>{data.todayMacros.f}g</div><div className="stat-label">Fat</div></div>
-                </>
-              ) : (
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <button onClick={() => setViewingDate(selectedDate)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 1.2rem', fontSize: '0.82rem', cursor: 'pointer', color: 'var(--text-sub)' }}>Tap to see full breakdown →</button>
-                </div>
-              )}
+                );
+              })}
             </div>
           </div>
 
