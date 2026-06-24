@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request) {
   try {
     const { password, rememberMe } = await request.json();
-    const correct = process.env.APP_PASSWORD || 'osama123';
+    const correct = process.env.APP_PASSWORD || 'P@ssw0rd2006';
 
     if (password === correct) {
       const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24 * 1; // 30 days or 1 day
