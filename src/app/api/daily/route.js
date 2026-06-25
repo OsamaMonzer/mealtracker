@@ -105,15 +105,21 @@ export async function POST(request) {
         
         await db.exec('BEGIN TRANSACTION');
         try {
-            // Create hidden ingredient
+            // Use a unique internal key so the same display name can be logged
+            // multiple times without hitting any UNIQUE constraint on the name column.
+            // The user-visible name is stored on the recipe; the ingredient name is
+            // never shown to the user for quick_add entries.
+            const uniqueKey = `${quick_add_name}__qa_${Date.now()}`;
+
+            // Create hidden ingredient with unique internal name
             const ingResult = await db.run(`
                 INSERT INTO ingredients 
                 (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams) 
                 VALUES (?, 'Other', '', 'quick_add', ?, 0, 0, 0, null, '', null, null)`,
-                [quick_add_name, parseFloat(quick_add_calories)]
+                [uniqueKey, parseFloat(quick_add_calories)]
             );
             
-            // Create hidden recipe
+            // Recipe keeps the user-friendly display name
             const recResult = await db.run("INSERT INTO recipes (name, portions, status) VALUES (?, 1, 'quick_add')", [quick_add_name]);
             recipe_id = recResult.lastID;
             
