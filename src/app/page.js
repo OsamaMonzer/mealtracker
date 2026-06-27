@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Carrot, BookOpen, UtensilsCrossed, Scale, TrendingDown, ChefHat, Flame, Beef, ChevronLeft, ChevronRight, X, Calendar, ImageIcon, RefreshCw, Trash2, Target, Zap, Settings, Camera, Loader2, Plus, Minus, CheckCircle2 } from 'lucide-react';
+import { Carrot, BookOpen, UtensilsCrossed, Scale, TrendingDown, ChefHat, Flame, Beef, ChevronLeft, ChevronRight, X, Calendar, ImageIcon, RefreshCw, Trash2, Target, Zap, Settings } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, ReferenceLine,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
@@ -264,228 +264,6 @@ function GoalsPanel({ goals, onSave, onClose }) {
   );
 }
 
-// ── Meal Scan Modal ────────────────────────────────────────────────────────
-const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
-
-function MealScanModal({ onClose, onLogged }) {
-  const [phase, setPhase] = useState('pick'); // pick | scanning | review | logging | done
-  const [preview, setPreview] = useState(null);
-  const [imageFile, setImageFile] = useState(null);
-  const [foods, setFoods] = useState([]);
-  const [mealType, setMealType] = useState('Lunch');
-  const [error, setError] = useState(null);
-  const fileRef = useRef(null);
-  const cameraRef = useRef(null);
-
-  const totalCals = foods.reduce((s, f) => s + Math.round((f.calories_100g * f.weight_g) / 100), 0);
-  const totalP    = foods.reduce((s, f) => s + Math.round((f.protein_100g  * f.weight_g) / 100 * 10) / 10, 0);
-
-  function pickFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImageFile(file);
-    setPreview(URL.createObjectURL(file));
-    setPhase('scanning');
-    scanImage(file);
-  }
-
-  async function scanImage(file) {
-    setError(null);
-    try {
-      const fd = new FormData();
-      fd.append('image', file);
-      const res = await fetch('/api/meal-scan', { method: 'POST', body: fd });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Scan failed');
-      if (!json.foods?.length) {
-        setError('No food detected in this photo. Try a clearer shot of your meal.');
-        setPhase('pick');
-        return;
-      }
-      setFoods(json.foods.map((f, i) => ({ ...f, _id: i, removed: false })));
-      setPhase('review');
-    } catch (e) {
-      setError(e.message);
-      setPhase('pick');
-    }
-  }
-
-  function updateFood(id, key, val) {
-    setFoods(fs => fs.map(f => f._id === id ? { ...f, [key]: val } : f));
-  }
-
-  function removeFood(id) {
-    setFoods(fs => fs.map(f => f._id === id ? { ...f, removed: true } : f));
-  }
-
-  async function logAll() {
-    setPhase('logging');
-    const active = foods.filter(f => !f.removed);
-    try {
-      const res = await fetch('/api/meal-scan/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ foods: active, meal_type: mealType }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Log failed');
-      setPhase('done');
-      showToast(`Logged ${active.length} items — ${json.total.calories} kcal ✓`);
-      onLogged?.();
-      setTimeout(onClose, 1400);
-    } catch (e) {
-      setError(e.message);
-      setPhase('review');
-    }
-  }
-
-  const activeFoods = foods.filter(f => !f.removed);
-
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 2000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '24px 24px 0 0', width: '100%', maxWidth: '560px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 64px rgba(0,0,0,0.35)' }}>
-
-        {/* Drag handle */}
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '0.75rem 0 0' }}>
-          <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: '#e0e0e0' }} />
-        </div>
-
-        {/* Header */}
-        <div style={{ padding: '0.75rem 1.25rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.4rem', color: '#111', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Camera size={20} color="var(--accent, #01696f)" /> Scan Meal
-          </div>
-          <button onClick={onClose} style={{ background: '#f3f3f3', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#666' }}><X size={16} /></button>
-        </div>
-
-        <div style={{ overflowY: 'auto', flex: 1, padding: '0.5rem 1.25rem 1.5rem' }}>
-
-          {/* PHASE: pick */}
-          {phase === 'pick' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {error && (
-                <div style={{ background: '#fff0f0', border: '1px solid #fca5a5', borderRadius: '12px', padding: '0.75rem 1rem', fontSize: '0.85rem', color: '#dc2626' }}>
-                  {error}
-                </div>
-              )}
-              <div style={{ background: '#f7fafa', border: '2px dashed var(--accent, #01696f)', borderRadius: '16px', padding: '2.5rem 1.5rem', textAlign: 'center', color: '#666' }}>
-                <Camera size={36} color="var(--accent, #01696f)" style={{ margin: '0 auto 0.75rem', opacity: 0.7 }} />
-                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#333', marginBottom: '0.35rem' }}>
-                  Take or upload a photo of your meal
-                </div>
-                <div style={{ fontSize: '0.8rem', color: '#999', marginBottom: '1.5rem' }}>
-                  Gemini AI will identify each food and estimate portions
-                </div>
-                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                  <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={pickFile} id="scan-camera-input" />
-                  <label htmlFor="scan-camera-input" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--accent, #01696f)', color: '#fff', borderRadius: '12px', padding: '0.7rem 1.25rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.88rem' }}>
-                    <Camera size={16} /> Camera
-                  </label>
-                  <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} id="scan-file-input" />
-                  <label htmlFor="scan-file-input" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#f3f3f3', color: '#333', borderRadius: '12px', padding: '0.7rem 1.25rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.88rem', border: '1px solid #e0e0e0' }}>
-                    <ImageIcon size={16} /> Gallery
-                  </label>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* PHASE: scanning */}
-          {phase === 'scanning' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem', padding: '1.5rem 0' }}>
-              {preview && <img src={preview} alt="Meal preview" style={{ width: '100%', maxHeight: '220px', objectFit: 'cover', borderRadius: '14px' }} />}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                <Loader2 size={28} color="var(--accent, #01696f)" style={{ animation: 'spin 1s linear infinite' }} />
-                <div style={{ fontSize: '0.9rem', color: '#555', fontWeight: 500 }}>Analysing your meal…</div>
-                <div style={{ fontSize: '0.78rem', color: '#999' }}>Gemini is identifying foods & estimating portions</div>
-              </div>
-              <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-            </div>
-          )}
-
-          {/* PHASE: review */}
-          {phase === 'review' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {preview && <img src={preview} alt="Meal preview" style={{ width: '100%', maxHeight: '180px', objectFit: 'cover', borderRadius: '14px' }} />}
-
-              {/* Meal type selector */}
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {MEAL_TYPES.map(mt => (
-                  <button key={mt} onClick={() => setMealType(mt)} style={{ padding: '0.4rem 0.9rem', borderRadius: '999px', border: '1.5px solid', borderColor: mealType === mt ? 'var(--accent, #01696f)' : '#e0e0e0', background: mealType === mt ? 'var(--accent, #01696f)' : '#fff', color: mealType === mt ? '#fff' : '#555', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}>
-                    {mt}
-                  </button>
-                ))}
-              </div>
-
-              {/* Totals bar */}
-              <div style={{ background: '#f0f9f7', borderRadius: '12px', padding: '0.7rem 1rem', display: 'flex', gap: '1.5rem', fontSize: '0.82rem', alignItems: 'center' }}>
-                <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.3rem', color: 'var(--accent, #01696f)', lineHeight: 1 }}>{totalCals}</span>
-                <span style={{ color: '#555' }}>kcal total</span>
-                <span style={{ color: '#1565c0', marginLeft: 'auto', fontWeight: 600 }}>P {Math.round(totalP * 10) / 10}g</span>
-              </div>
-
-              {/* Food chips */}
-              {error && (
-                <div style={{ background: '#fff0f0', border: '1px solid #fca5a5', borderRadius: '10px', padding: '0.6rem 0.9rem', fontSize: '0.83rem', color: '#dc2626' }}>{error}</div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {foods.map(f => {
-                  if (f.removed) return null;
-                  const lineCals = Math.round((f.calories_100g * f.weight_g) / 100);
-                  return (
-                    <div key={f._id} style={{ background: '#f7f7f7', borderRadius: '14px', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#111', marginBottom: '0.3rem', textTransform: 'capitalize' }}>{f.name}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          <button onClick={() => updateFood(f._id, 'weight_g', Math.max(10, f.weight_g - 10))} style={{ background: '#e8e8e8', border: 'none', borderRadius: '6px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#444', flexShrink: 0 }}><Minus size={12} /></button>
-                          <span style={{ fontSize: '0.82rem', color: '#555', minWidth: '48px', textAlign: 'center' }}>{f.weight_g}g</span>
-                          <button onClick={() => updateFood(f._id, 'weight_g', f.weight_g + 10)} style={{ background: '#e8e8e8', border: 'none', borderRadius: '6px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#444', flexShrink: 0 }}><Plus size={12} /></button>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--accent, #01696f)', fontWeight: 600, marginLeft: '0.25rem' }}>{lineCals} kcal</span>
-                        </div>
-                      </div>
-                      <button onClick={() => removeFood(f._id)} style={{ background: '#fee2e2', border: 'none', borderRadius: '8px', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#dc2626', flexShrink: 0 }}><X size={14} /></button>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Retake */}
-              <button onClick={() => { setPhase('pick'); setFoods([]); setError(null); setPreview(null); }} style={{ background: 'none', border: '1.5px solid #e0e0e0', borderRadius: '12px', padding: '0.6rem', fontSize: '0.82rem', color: '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
-                <RefreshCw size={14} /> Retake photo
-              </button>
-            </div>
-          )}
-
-          {/* PHASE: logging */}
-          {phase === 'logging' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem 0' }}>
-              <Loader2 size={28} color="var(--accent, #01696f)" style={{ animation: 'spin 1s linear infinite' }} />
-              <div style={{ fontSize: '0.9rem', color: '#555' }}>Logging {activeFoods.length} items…</div>
-            </div>
-          )}
-
-          {/* PHASE: done */}
-          {phase === 'done' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', padding: '2rem 0' }}>
-              <CheckCircle2 size={40} color="var(--accent, #01696f)" />
-              <div style={{ fontSize: '1rem', fontWeight: 600, color: '#111' }}>Logged successfully!</div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer CTA */}
-        {phase === 'review' && activeFoods.length > 0 && (
-          <div style={{ padding: '0.75rem 1.25rem 1.5rem', borderTop: '1px solid #f0f0f0' }}>
-            <button onClick={logAll} style={{ width: '100%', background: 'var(--accent, #01696f)', color: '#fff', border: 'none', borderRadius: '14px', padding: '0.9rem', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-              <UtensilsCrossed size={16} /> Log {activeFoods.length} item{activeFoods.length !== 1 ? 's' : ''} as {mealType}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function Home() {
   const [data, setData] = useState(null);
@@ -494,7 +272,6 @@ export default function Home() {
   const [viewingDate, setViewingDate] = useState(null);
   const [photoLog, setPhotoLog] = useState(null);
   const [showGoals, setShowGoals] = useState(false);
-  const [showScan, setShowScan] = useState(false);
   const [goals, setGoals] = useState({ calorie_goal: 1800, protein_goal: 150, carbs_goal: 200, fat_goal: 60, weight_target: 75 });
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -614,7 +391,6 @@ export default function Home() {
       {viewingDate && <DayModal date={viewingDate} onClose={() => setViewingDate(null)} GOAL={GOAL} />}
       {photoLog && <PhotoModal log={photoLog} onClose={() => setPhotoLog(null)} onDeletePhoto={handleDeletePhoto} onReplacePhoto={handleReplacePhoto} />}
       {showGoals && <GoalsPanel goals={goals} onSave={handleSaveGoals} onClose={() => setShowGoals(false)} />}
-      {showScan && <MealScanModal onClose={() => setShowScan(false)} onLogged={fetchDashboard} />}
 
       {/* Header */}
       <div style={{ marginBottom: '3rem' }}>
@@ -644,9 +420,6 @@ export default function Home() {
         <Link href="/recipes" className="nav-card animate-fade-up stagger-2"><BookOpen size={26} strokeWidth={1.7} />Recipes</Link>
         <Link href="/tracking" className="nav-card animate-fade-up stagger-3"><UtensilsCrossed size={26} strokeWidth={1.7} />Daily Log</Link>
         <Link href="/weight" className="nav-card animate-fade-up stagger-4"><Scale size={26} strokeWidth={1.7} />Weight</Link>
-        <button onClick={() => setShowScan(true)} className="nav-card animate-fade-up stagger-5" style={{ background: 'var(--accent, #01696f)', color: '#fff', border: 'none', cursor: 'pointer', gridColumn: 'span 2' }}>
-          <Camera size={26} strokeWidth={1.7} />Scan Meal with AI
-        </button>
       </nav>
 
       {loading ? (
