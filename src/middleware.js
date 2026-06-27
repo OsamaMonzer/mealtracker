@@ -5,10 +5,12 @@ const API_KEY = 'mealtracker-shortcut-2024';
 export function middleware(request) {
   const { pathname, searchParams } = request.nextUrl;
 
-  // Always allow login page, auth API, and Next.js internals
+  // Always allow login page, auth API, Next.js internals, and MCP endpoint
+  // (MCP handles its own auth internally via x-api-key header or ?key= param)
   if (
     pathname.startsWith('/login') ||
     pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/mcp') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
     pathname === '/icon.svg'
@@ -21,7 +23,6 @@ export function middleware(request) {
   if (headerKey === API_KEY) return NextResponse.next();
 
   // Accept key via query param (GPT Actions, Perplexity, any URL-only client)
-  // e.g. https://your-app.com/api/mcp?key=mealtracker-shortcut-2024
   const queryKey = searchParams.get('key');
   if (queryKey === API_KEY) return NextResponse.next();
 
