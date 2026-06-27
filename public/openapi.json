@@ -13,7 +13,7 @@
       "post": {
         "operationId": "mealtracker_action",
         "summary": "Perform any MealTracker action",
-        "description": "Single endpoint for all MealTracker actions. Pass an 'action' field and the relevant parameters. Available actions: get_today_summary, get_history, get_weekly_stats, list_ingredients, list_recipes, search_ingredient, log_meal, log_ingredient, quick_add_calories, create_recipe, add_ingredient, scan_barcode, get_goals, update_goals, delete_log_entry.",
+        "description": "Single endpoint for all MealTracker actions. Pass an 'action' field and the relevant parameters.\n\nFor logging real foods (eggs, chicken, rice, etc.) always use action='log_food' — it searches the DB first, adds the ingredient if missing, then logs it.\n\nOnly use quick_add_calories when the user gives ONLY a calorie number with no real food name.",
         "requestBody": {
           "required": true,
           "content": {
@@ -26,6 +26,7 @@
                     "type": "string",
                     "description": "The action to perform.",
                     "enum": [
+                      "log_food",
                       "get_today_summary",
                       "get_history",
                       "get_weekly_stats",
@@ -48,11 +49,11 @@
                   "recipe_id": { "type": "integer", "description": "Recipe ID for log_meal." },
                   "portions_eaten": { "type": "number", "description": "Portions eaten for log_meal." },
                   "ingredient_id": { "type": "integer", "description": "Ingredient ID for log_ingredient." },
-                  "weight_g": { "type": "number", "description": "Weight in grams for log_ingredient." },
+                  "weight_g": { "type": "number", "description": "Weight in grams. For log_food: total grams to log (e.g. 4 eggs = 240g)." },
                   "meal_type": { "type": "string", "enum": ["Breakfast","Lunch","Dinner","Snack"] },
-                  "name": { "type": "string", "description": "Name for quick_add_calories, add_ingredient, or create_recipe." },
+                  "name": { "type": "string", "description": "Food or ingredient name for log_food, quick_add_calories, add_ingredient, or create_recipe." },
                   "calories": { "type": "number", "description": "Calories for quick_add_calories." },
-                  "calories_100g": { "type": "number" },
+                  "calories_100g": { "type": "number", "description": "Calories per 100g. Required for log_food if ingredient is not in DB." },
                   "protein_100g": { "type": "number" },
                   "carbs_100g": { "type": "number" },
                   "fat_100g": { "type": "number" },
@@ -89,7 +90,182 @@
             "description": "Action result",
             "content": {
               "application/json": {
-                "schema": { "type": "object" }
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "TodaySummary",
+                      "type": "object",
+                      "properties": {
+                        "date": { "type": "string" },
+                        "meals": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": { "type": "integer" },
+                              "meal_type": { "type": "string" },
+                              "name": { "type": "string" },
+                              "calories": { "type": "number" },
+                              "protein": { "type": "number" },
+                              "carbs": { "type": "number" },
+                              "fat": { "type": "number" }
+                            }
+                          }
+                        },
+                        "totals": {
+                          "type": "object",
+                          "properties": {
+                            "calories": { "type": "number" },
+                            "protein": { "type": "number" },
+                            "carbs": { "type": "number" },
+                            "fat": { "type": "number" }
+                          }
+                        },
+                        "goals": {
+                          "type": "object",
+                          "properties": {
+                            "calories": { "type": "number" },
+                            "protein": { "type": "number" },
+                            "carbs": { "type": "number" },
+                            "fat": { "type": "number" }
+                          }
+                        },
+                        "remaining": {
+                          "type": "object",
+                          "properties": {
+                            "calories": { "type": "number" },
+                            "protein": { "type": "number" },
+                            "carbs": { "type": "number" },
+                            "fat": { "type": "number" }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "title": "LogFoodResult",
+                      "type": "object",
+                      "properties": {
+                        "success": { "type": "boolean" },
+                        "log_id": { "type": "integer" },
+                        "ingredient_name": { "type": "string" },
+                        "ingredient_id": { "type": "integer" },
+                        "weight_g": { "type": "number" },
+                        "was_in_db": { "type": "boolean", "description": "true if ingredient already existed, false if it was newly added" },
+                        "calories": { "type": "number" },
+                        "protein": { "type": "number" },
+                        "carbs": { "type": "number" },
+                        "fat": { "type": "number" }
+                      }
+                    },
+                    {
+                      "title": "IngredientList",
+                      "type": "object",
+                      "properties": {
+                        "ingredients": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": { "type": "integer" },
+                              "name": { "type": "string" },
+                              "brand": { "type": "string" },
+                              "category": { "type": "string" },
+                              "calories_100g": { "type": "number" },
+                              "protein_100g": { "type": "number" },
+                              "carbs_100g": { "type": "number" },
+                              "fat_100g": { "type": "number" }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "title": "RecipeList",
+                      "type": "object",
+                      "properties": {
+                        "recipes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": { "type": "integer" },
+                              "name": { "type": "string" },
+                              "portions": { "type": "number" },
+                              "per_portion": {
+                                "type": "object",
+                                "properties": {
+                                  "calories": { "type": "number" },
+                                  "protein": { "type": "number" },
+                                  "carbs": { "type": "number" },
+                                  "fat": { "type": "number" }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "title": "Goals",
+                      "type": "object",
+                      "properties": {
+                        "calorie_goal": { "type": "number" },
+                        "protein_goal": { "type": "number" },
+                        "carbs_goal": { "type": "number" },
+                        "fat_goal": { "type": "number" },
+                        "weight_target": { "type": "number" }
+                      }
+                    },
+                    {
+                      "title": "WeeklyStats",
+                      "type": "object",
+                      "properties": {
+                        "days": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "date": { "type": "string" },
+                              "calories": { "type": "number" },
+                              "protein": { "type": "number" },
+                              "carbs": { "type": "number" },
+                              "fat": { "type": "number" },
+                              "meals": { "type": "integer" }
+                            }
+                          }
+                        },
+                        "averages": {
+                          "type": "object",
+                          "properties": {
+                            "calories": { "type": "number" },
+                            "protein": { "type": "number" },
+                            "carbs": { "type": "number" },
+                            "fat": { "type": "number" }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "title": "SuccessResult",
+                      "type": "object",
+                      "properties": {
+                        "success": { "type": "boolean" },
+                        "log_id": { "type": "integer" },
+                        "calories": { "type": "number" },
+                        "protein": { "type": "number" },
+                        "carbs": { "type": "number" },
+                        "fat": { "type": "number" }
+                      }
+                    },
+                    {
+                      "title": "ErrorResult",
+                      "type": "object",
+                      "properties": {
+                        "error": { "type": "string" }
+                      }
+                    }
+                  ]
+                }
               }
             }
           }
