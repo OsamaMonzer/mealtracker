@@ -3,10 +3,6 @@ import { openDb } from '../../../lib/db';
 
 export const dynamic = 'force-dynamic';
 
-// ── GPT Actions unified endpoint ─────────────────────────────────────────────
-// All actions go through POST /api/gpt with { action, ...params }
-// Auth: x-api-key header (same key as the Shortcut)
-
 function today() {
   return new Date().toISOString().split('T')[0];
 }
@@ -152,6 +148,75 @@ export async function POST(request) {
       if (!q) return NextResponse.json({ error: 'query required' }, { status: 400 });
       const local = await db.all(`SELECT id, name, brand, category, calories_100g, protein_100g, carbs_100g, fat_100g FROM ingredients WHERE status NOT IN ('quick_add','single_ingredient','one_off') AND (LOWER(name) LIKE ? OR LOWER(brand) LIKE ?)`, [`%${q.toLowerCase()}%`, `%${q.toLowerCase()}%`]);
       return NextResponse.json({ local_results: local });
+    }
+
+    // ── log_food (smart: search → add if missing → log) ──────────────────
+    if (action === 'log_food') {
+      const { name, weight_g, meal_type, date,
+              calories_100g, protein_100g, carbs_100g, fat_100g } = p;
+      if (!name || !weight_g) return NextResponse.json({ error: 'name and weight_g required' }, { status: 400 });
+
+      // 1. Search DB
+      const q = name.trim().toLowerCase();
+      const matches = await db.all(
+        `SELECT id, name, calories_100g, protein_100g, carbs_100g, fat_100g
+         FROM ingredients
+         WHERE status NOT IN ('quick_add','single_ingredient','one_off')
+           AND LOWER(name) LIKE ?`,
+        [`%${q}%`]
+      );
+
+      let ingredient;
+      if (matches.length > 0) {
+        // Use closest match (exact first, otherwise first result)
+        ingredient = matches.find(m => normName(m.name) === normName(name)) || matches[0];
+      } else {
+        // 2. Not found — add it using provided nutrition (AI should supply these)
+        if (calories_100g === undefined) {
+          return NextResponse.json({
+            error: 'ingredient_not_found',
+            message: `"${name}" not found in database. Please provide calories_100g (and optionally protein_100g, carbs_100g, fat_100g) to add it automatically.`,
+          }, { status: 404 });
+        }
+        const res = await db.run(
+          `INSERT INTO ingredients (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes)
+           VALUES (?, 'Other', '', 'Raw', ?, ?, ?, ?, null, 'Added via AI')`,
+          [name.trim(), parseFloat(calories_100g), parseFloat(protein_100g) || 0, parseFloat(carbs_100g) || 0, parseFloat(fat_100g) || 0]
+        );
+        ingredient = await db.get('SELECT * FROM ingredients WHERE id = ?', [res.lastID]);
+      }
+
+      // 3. Log it via log_ingredient logic (find/create single_ingredient recipe)
+      const existing = await db.get(
+        `SELECT r.id FROM recipes r JOIN recipe_ingredients ri ON r.id = ri.recipe_id
+         WHERE r.status = 'single_ingredient' AND ri.ingredient_id = ? LIMIT 1`,
+        [ingredient.id]
+      );
+      let recipe_id;
+      if (existing) {
+        recipe_id = existing.id;
+      } else {
+        const rr = await db.run("INSERT INTO recipes (name, portions, status) VALUES (?, 1, 'single_ingredient')", [ingredient.name]);
+        recipe_id = rr.lastID;
+        await db.run('INSERT INTO recipe_ingredients (recipe_id, ingredient_id, weight_g) VALUES (?, ?, 100)', [recipe_id, ingredient.id]);
+      }
+
+      const portions_eaten = parseFloat(weight_g) / 100.0;
+      const logRes = await db.run(
+        'INSERT INTO daily_logs (date, meal_type, recipe_id, portions_eaten) VALUES (?, ?, ?, ?)',
+        [date || today(), meal_type || 'Snack', recipe_id, portions_eaten]
+      );
+      const macros = await computeMacros(db, recipe_id, 1, portions_eaten);
+
+      return NextResponse.json({
+        success: true,
+        log_id: logRes.lastID,
+        ingredient_name: ingredient.name,
+        ingredient_id: ingredient.id,
+        weight_g: parseFloat(weight_g),
+        was_in_db: matches.length > 0,
+        ...macros,
+      });
     }
 
     // ── log_meal ─────────────────────────────────────────────────────────

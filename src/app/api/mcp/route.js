@@ -2,16 +2,25 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-// ── MCP-over-HTTP (SSE) transport ──────────────────────────────────────────────
-//
-// This implements the MCP Streamable HTTP transport (2025-03-26 spec).
-// Compatible with Claude Desktop "Server URL" mode, Cursor, and other
-// MCP clients that connect over HTTP rather than stdio.
-//
-// All tool logic lives in /api/gpt — we delegate every call there.
-// Auth: x-api-key header (same key used everywhere)
-
 const TOOLS = [
+  {
+    name: 'log_food',
+    description: 'THE PREFERRED WAY to log any food. Automatically searches the database first, adds the ingredient if not found, then logs it. Always use this instead of quick_add_calories when the user mentions a real food. Provide weight_g in grams (e.g. 4 eggs = 240g). If the food is not in the DB, also provide calories_100g, protein_100g, carbs_100g, fat_100g using your knowledge.',
+    inputSchema: {
+      type: 'object',
+      required: ['name', 'weight_g'],
+      properties: {
+        name:          { type: 'string', description: 'Food name e.g. "eggs", "chicken breast", "oats"' },
+        weight_g:      { type: 'number', description: 'Total weight in grams to log' },
+        meal_type:     { type: 'string', enum: ['Breakfast','Lunch','Dinner','Snack'] },
+        date:          { type: 'string', description: 'Date YYYY-MM-DD. Defaults to today.' },
+        calories_100g: { type: 'number', description: 'Required if ingredient is not in DB' },
+        protein_100g:  { type: 'number' },
+        carbs_100g:    { type: 'number' },
+        fat_100g:      { type: 'number' },
+      },
+    },
+  },
   {
     name: 'get_today_summary',
     description: "Get today's calories eaten, remaining macros vs goals, weekly average, and full meal list.",
@@ -88,7 +97,7 @@ const TOOLS = [
   },
   {
     name: 'quick_add_calories',
-    description: 'Log calories with just a name and number. No ingredient needed.',
+    description: 'Log calories with just a name and calorie number. Only use this when the user provides ONLY a calorie count and no real food name (e.g. "add 500 calories"). Never use this for real foods like eggs, chicken, rice, etc.',
     inputSchema: {
       type: 'object',
       required: ['name', 'calories'],
@@ -185,7 +194,6 @@ const TOOLS = [
   },
 ];
 
-// Delegate tool calls to /api/gpt
 async function callTool(toolName, args, origin) {
   const res = await fetch(`${origin}/api/gpt`, {
     method: 'POST',
@@ -199,23 +207,14 @@ async function callTool(toolName, args, origin) {
 }
 
 function mcpResponse(id, result) {
-  return NextResponse.json({
-    jsonrpc: '2.0',
-    id,
-    result,
-  });
+  return NextResponse.json({ jsonrpc: '2.0', id, result });
 }
 
 function mcpError(id, code, message) {
-  return NextResponse.json({
-    jsonrpc: '2.0',
-    id,
-    error: { code, message },
-  });
+  return NextResponse.json({ jsonrpc: '2.0', id, error: { code, message } });
 }
 
 export async function GET() {
-  // Health check — confirms the MCP endpoint is reachable
   return NextResponse.json({ ok: true, name: 'mealtracker-mcp', version: '1.0.0' });
 }
 
@@ -224,11 +223,8 @@ export async function POST(request) {
     const body = await request.json();
     const { jsonrpc, method, params, id } = body;
 
-    if (jsonrpc !== '2.0') {
-      return mcpError(id, -32600, 'Invalid JSON-RPC version');
-    }
+    if (jsonrpc !== '2.0') return mcpError(id, -32600, 'Invalid JSON-RPC version');
 
-    // ── initialize ────────────────────────────────────────────────────────────
     if (method === 'initialize') {
       return mcpResponse(id, {
         protocolVersion: '2024-11-05',
@@ -237,12 +233,10 @@ export async function POST(request) {
       });
     }
 
-    // ── tools/list ──────────────────────────────────────────────────────────
     if (method === 'tools/list') {
       return mcpResponse(id, { tools: TOOLS });
     }
 
-    // ── tools/call ──────────────────────────────────────────────────────────
     if (method === 'tools/call') {
       const toolName = params?.name;
       const args = params?.arguments || {};
@@ -259,7 +253,6 @@ export async function POST(request) {
       });
     }
 
-    // ── notifications/initialized (no response needed) ─────────────────────
     if (method === 'notifications/initialized') {
       return new NextResponse(null, { status: 204 });
     }
@@ -267,7 +260,7 @@ export async function POST(request) {
     return mcpError(id, -32601, `Method not found: ${method}`);
 
   } catch (e) {
-    console.error('MCP SSE error', e);
+    console.error('MCP error', e);
     return NextResponse.json({ jsonrpc: '2.0', id: null, error: { code: -32603, message: e.message } }, { status: 500 });
   }
 }
