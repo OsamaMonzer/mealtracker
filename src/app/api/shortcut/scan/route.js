@@ -9,10 +9,13 @@ export const dynamic = 'force-dynamic';
 //   Header: x-api-key: mealtracker-shortcut-2024
 //   Body: { "barcode": "1234567890123" }
 //
-// Returns:
-//   { saved: true, ingredient: {...} }   ← new ingredient created
-//   { saved: false, existing: {...} }    ← already in your DB
-//   { saved: false, notFound: true }     ← barcode not on OpenFoodFacts
+// Every response always includes a top-level "message" string you can
+// show directly in the Shortcut as a notification/alert. Possible values:
+//
+//   status: "added"     → ingredient was found on OpenFoodFacts and saved to your DB
+//   status: "exists"    → already in your DB, nothing changed
+//   status: "not_found" → barcode not recognised by OpenFoodFacts
+//   status: "error"     → something went wrong (see "message")
 
 function parseServing(s) {
   if (!s) return { label: null, grams: null };
@@ -71,60 +74,74 @@ export async function POST(request) {
     const body = await request.json().catch(() => ({}));
     const barcode = (body.barcode || '').toString().trim();
     if (!barcode) {
-      return NextResponse.json({ error: 'barcode is required' }, { status: 400 });
+      return NextResponse.json({
+        status: 'error',
+        message: '❌ No barcode provided.',
+      }, { status: 400 });
     }
 
     const db = await openDb();
-
-    // 1. Check if already in local DB (skip hidden ingredients)
     const localRows = await db.all(
       "SELECT * FROM ingredients WHERE status NOT IN ('quick_add','single_ingredient','one_off')"
     );
+
     const product = await fetchProduct(barcode);
 
     if (!product) {
-      return NextResponse.json({ saved: false, notFound: true, barcode });
+      return NextResponse.json({
+        status: 'not_found',
+        message: `❌ Barcode ${barcode} not found on OpenFoodFacts.`,
+        barcode,
+      });
     }
 
     const nutr = product.nutriments || {};
     const serv = parseServing(product.serving_size || '');
     const name = product.product_name || product.generic_name || product.brands || 'Unknown';
+    const cals = resolveKcal(nutr, serv.grams) ?? 0;
+    const prot = per100(nutr['proteins_100g'] ?? nutr['protein_100g'], nutr['proteins_serving'], serv.grams) ?? 0;
+    const carb = per100(nutr['carbohydrates_100g'], nutr['carbohydrates_serving'], serv.grams) ?? 0;
+    const fat  = per100(nutr['fat_100g'], nutr['fat_serving'], serv.grams) ?? 0;
 
     const existing = localRows.find(r => normalizeName(r.name) === normalizeName(name));
     if (existing) {
-      return NextResponse.json({ saved: false, existing });
+      return NextResponse.json({
+        status: 'exists',
+        message: `✅ Already in your DB: ${name}\n${cals} kcal · P ${existing.protein_100g}g · C ${existing.carbs_100g}g · F ${existing.fat_100g}g (per 100g)`,
+        ingredient: existing,
+      });
     }
 
-    // 2. Save to DB
-    const record = {
-      name,
-      brand:          product.brands || '',
-      category:       product.categories_tags?.[0]
-                        ? product.categories_tags[0].replace(/^en:/, '').replace(/-/g, ' ')
-                        : 'Other',
-      status:         'Raw',
-      calories_100g:  resolveKcal(nutr, serv.grams) ?? 0,
-      protein_100g:   per100(nutr['proteins_100g'] ?? nutr['protein_100g'], nutr['proteins_serving'], serv.grams) ?? 0,
-      carbs_100g:     per100(nutr['carbohydrates_100g'], nutr['carbohydrates_serving'], serv.grams) ?? 0,
-      fat_100g:       per100(nutr['fat_100g'], nutr['fat_serving'], serv.grams) ?? 0,
-      serving_label:  serv.label || product.serving_size || null,
-      serving_grams:  serv.grams || null,
-      notes:          `Scanned via Shortcut — barcode ${barcode}`,
-    };
-
+    // Save to DB
     const res = await db.run(
       `INSERT INTO ingredients (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, null, ?, ?, ?)`,
-      [record.name, record.category, record.brand, record.status,
-       record.calories_100g, record.protein_100g, record.carbs_100g, record.fat_100g,
-       record.notes, record.serving_label, record.serving_grams]
+      [
+        name,
+        product.categories_tags?.[0]
+          ? product.categories_tags[0].replace(/^en:/, '').replace(/-/g, ' ')
+          : 'Other',
+        product.brands || '',
+        'Raw',
+        cals, prot, carb, fat,
+        `Scanned via Shortcut — barcode ${barcode}`,
+        serv.label || product.serving_size || null,
+        serv.grams || null,
+      ]
     );
 
     const saved = await db.get('SELECT * FROM ingredients WHERE id = ?', [res.lastID]);
-    return NextResponse.json({ saved: true, ingredient: saved });
+    return NextResponse.json({
+      status: 'added',
+      message: `✅ Added: ${name}\n${cals} kcal · P ${prot}g · C ${carb}g · F ${fat}g (per 100g)`,
+      ingredient: saved,
+    });
 
   } catch (e) {
     console.error('shortcut scan error', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({
+      status: 'error',
+      message: `❌ Error: ${e.message}`,
+    }, { status: 500 });
   }
 }
