@@ -1,0 +1,110 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MealTracker API",
+    "description": "Full access to MealTracker: log meals, manage ingredients, recipes, goals, and nutrition history.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://YOUR_APP_URL" }
+  ],
+  "paths": {
+    "/api/gpt": {
+      "post": {
+        "operationId": "mealtracker_action",
+        "summary": "Perform any MealTracker action",
+        "description": "Single endpoint for all MealTracker actions. Pass an 'action' field and the relevant parameters.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["action"],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "description": "The action to perform.",
+                    "enum": [
+                      "get_today_summary",
+                      "get_history",
+                      "get_weekly_stats",
+                      "list_ingredients",
+                      "list_recipes",
+                      "search_ingredient",
+                      "log_meal",
+                      "log_ingredient",
+                      "quick_add_calories",
+                      "create_recipe",
+                      "add_ingredient",
+                      "scan_barcode",
+                      "get_goals",
+                      "update_goals",
+                      "delete_log_entry"
+                    ]
+                  },
+                  "date": { "type": "string", "description": "Date in YYYY-MM-DD format. Defaults to today." },
+                  "query": { "type": "string", "description": "Search query for search_ingredient." },
+                  "recipe_id": { "type": "integer", "description": "Recipe ID for log_meal." },
+                  "portions_eaten": { "type": "number", "description": "Portions eaten for log_meal." },
+                  "ingredient_id": { "type": "integer", "description": "Ingredient ID for log_ingredient." },
+                  "weight_g": { "type": "number", "description": "Weight in grams for log_ingredient." },
+                  "meal_type": { "type": "string", "enum": ["Breakfast","Lunch","Dinner","Snack"] },
+                  "name": { "type": "string", "description": "Name for quick_add_calories, add_ingredient, or create_recipe." },
+                  "calories": { "type": "number", "description": "Calories for quick_add_calories." },
+                  "calories_100g": { "type": "number" },
+                  "protein_100g": { "type": "number" },
+                  "carbs_100g": { "type": "number" },
+                  "fat_100g": { "type": "number" },
+                  "category": { "type": "string", "enum": ["Protein","Carb","Fat","Vegetable","Fruit","Sauce","Dairy","Other"] },
+                  "brand": { "type": "string" },
+                  "serving_label": { "type": "string" },
+                  "serving_grams": { "type": "number" },
+                  "portions": { "type": "number", "description": "Portions for create_recipe." },
+                  "ingredients": {
+                    "type": "array",
+                    "description": "Ingredient list for create_recipe.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ingredient_id": { "type": "integer" },
+                        "weight_g": { "type": "number" }
+                      }
+                    }
+                  },
+                  "barcode": { "type": "string", "description": "Barcode number for scan_barcode." },
+                  "calorie_goal": { "type": "number" },
+                  "protein_goal": { "type": "number" },
+                  "carbs_goal": { "type": "number" },
+                  "fat_goal": { "type": "number" },
+                  "weight_target": { "type": "number" },
+                  "id": { "type": "integer", "description": "Log entry ID for delete_log_entry." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Action result",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        },
+        "security": [{ "ApiKeyAuth": [] }]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key"
+      }
+    }
+  }
+}
