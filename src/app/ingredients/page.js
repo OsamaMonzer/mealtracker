@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Plus, Pencil, Trash2, Search, SlidersHorizontal, Carrot, Check, X, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Search, SlidersHorizontal, Carrot, Check, X, AlertTriangle, ScanBarcode } from 'lucide-react';
 import { showToast } from '../../components/ToastContainer';
 import { useSupabaseRealtime } from '../../hooks/useSupabaseRealtime';
 
@@ -15,7 +16,14 @@ const CAT_CLASS = {
   Sauce: 'badge-gray', Other: 'badge-gray',
 };
 
+function hasZeroNutrition(r) {
+  const fields = [r.calories_100g, r.protein_100g, r.carbs_100g, r.fat_100g];
+  return fields.every(v => v === null || v === undefined || v === '' || Number(v) === 0);
+}
+
 export default function IngredientsPage() {
+  const searchParams = useSearchParams();
+
   const [ingredients, setIngredients] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -31,11 +39,148 @@ export default function IngredientsPage() {
   const [seeding, setSeeding]   = useState(false);
   const ingredientsRef          = useRef([]);
   const [highlightedId, setHighlightedId] = useState(null);
+  const [scanStatus, setScanStatus] = useState(''); // 'scanning' | 'importing' | 'zero' | ''
+  const barcodeHandled = useRef(false);
 
   useEffect(() => { fetchIngredients(); }, []);
 
   useSupabaseRealtime(['ingredients'], () => fetchIngredients(true));
 
+  // ── Barcode callback from Shortcut ──────────────────────────────────────────
+  useEffect(() => {
+    const barcode = searchParams.get('barcode');
+    if (!barcode || barcodeHandled.current) return;
+    barcodeHandled.current = true;
+
+    // clean up URL without reload
+    const url = new URL(window.location.href);
+    url.searchParams.delete('barcode');
+    window.history.replaceState({}, '', url.toString());
+
+    handleBarcodeImport(barcode);
+  }, [searchParams]);
+
+  async function handleBarcodeImport(barcode) {
+    setScanStatus('importing');
+    try {
+      const res = await fetch(`/api/ingredients/search?barcode=${encodeURIComponent(barcode.trim())}`);
+      const data = await res.json();
+      const results = Array.isArray(data) ? data.filter(Boolean) : [];
+
+      if (results.length === 0) {
+        setScanStatus('');
+        showToast('No product found for that barcode');
+        // Open blank add form so user can enter manually
+        setEditId(null);
+        setForm({ ...blank });
+        setShowForm(true);
+        return;
+      }
+
+      const r = results[0];
+      const servingVal = r.serving_label || (r.serving_grams ? String(r.serving_grams) : '100');
+      const importedForm = {
+        ...blank,
+        name: r.name,
+        brand: r.brand || '',
+        category: r.category || 'Other',
+        status: 'Raw',
+        serving_g: servingVal,
+        calories_100g: r.calories_100g ?? '',
+        protein_100g: r.protein_100g ?? '',
+        carbs_100g: r.carbs_100g ?? '',
+        fat_100g: r.fat_100g ?? '',
+        price_kg: '',
+        notes: '',
+      };
+
+      const isZero = hasZeroNutrition(r);
+
+      if (isZero) {
+        // Save the ingredient first, then open it in edit mode
+        const saveRes = await fetch('/api/ingredients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...importedForm,
+            calories_100g: 0,
+            protein_100g: 0,
+            carbs_100g: 0,
+            fat_100g: 0,
+          }),
+        });
+
+        if (saveRes.ok) {
+          const saved = await saveRes.json();
+          await fetchIngredients();
+          setScanStatus('zero');
+          showToast('⚠️ Nutrition data missing — edit to fill in values');
+          // Find the saved ingredient and open inline edit
+          setTimeout(() => {
+            const savedId = saved?.id || saved?.[0]?.id;
+            if (savedId) {
+              const ing = {
+                id: savedId,
+                ...importedForm,
+                calories_100g: 0,
+                protein_100g: 0,
+                carbs_100g: 0,
+                fat_100g: 0,
+              };
+              setEditId(savedId);
+              setForm({
+                name: ing.name,
+                category: ing.category,
+                brand: ing.brand || '',
+                status: ing.status,
+                calories_100g: '',
+                protein_100g: '',
+                carbs_100g: '',
+                fat_100g: '',
+                serving_g: ing.serving_g || '',
+                price_kg: '',
+                notes: '',
+              });
+              setHighlightedId(savedId);
+              // Scroll to ingredient row
+              setTimeout(() => {
+                const el = document.getElementById(`ing-row-${savedId}`);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, 300);
+            } else {
+              // Fallback: open add form prefilled
+              setForm(importedForm);
+              setEditId(null);
+              setShowForm(true);
+            }
+            setScanStatus('');
+          }, 400);
+        }
+      } else {
+        // Good data — open add form prefilled for confirmation
+        setForm(importedForm);
+        setEditId(null);
+        setShowForm(true);
+        setScanStatus('');
+        showToast('Product found — review and save');
+      }
+    } catch (e) {
+      console.error(e);
+      setScanStatus('');
+      showToast('Error looking up barcode');
+    }
+  }
+
+  // ── Scan Barcode button ─────────────────────────────────────────────────────
+  function launchBarcodeScan() {
+    const returnUrl = encodeURIComponent(`${window.location.origin}/ingredients?barcode=`);
+    // The Shortcut must be named exactly "MealTracker Scan Barcode"
+    // It scans a barcode then opens: [returnUrl][scanned barcode value]
+    const shortcutName = encodeURIComponent('MealTracker Scan Barcode');
+    window.location.href = `shortcuts://x-callback-url/run-shortcut?name=${shortcutName}&x-success=${returnUrl}`;
+  }
+
+  // ── Existing functions ──────────────────────────────────────────────────────
   async function fetchIngredients(silent = false) {
     try {
       if (!silent) setError('');
@@ -43,20 +188,20 @@ export default function IngredientsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not load ingredients');
       if (!Array.isArray(data)) throw new Error('Ingredients API did not return a list');
-      
+
       const newStr = JSON.stringify(data);
       const oldStr = JSON.stringify(ingredientsRef.current);
-      
+
       if (newStr !== oldStr) {
         setIngredients(data);
         ingredientsRef.current = data;
       }
     }
-    catch(e) { 
-      console.error(e); 
+    catch(e) {
+      console.error(e);
       if (!silent) { setError(e.message); setIngredients([]); }
-    } finally { 
-      setLoading(false); 
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -88,11 +233,11 @@ export default function IngredientsPage() {
     const url = editId ? `/api/ingredients/${editId}` : '/api/ingredients';
     const method = editId ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(nutritionPayload()) });
-    if (res.ok) { 
-      setShowForm(false); 
-      setForm(blank); 
-      setEditId(null); 
-      fetchIngredients(); 
+    if (res.ok) {
+      setShowForm(false);
+      setForm(blank);
+      setEditId(null);
+      fetchIngredients();
       showToast(editId ? 'Ingredient updated' : 'Ingredient added');
     }
     else { const e = await res.json(); alert('Error: ' + e.error); }
@@ -119,11 +264,35 @@ export default function IngredientsPage() {
           </Link>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '0.5rem' }}>
+          {/* Scan Barcode button */}
+          <button
+            className="btn"
+            onClick={launchBarcodeScan}
+            title="Scan barcode via Shortcuts"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <ScanBarcode size={15} />
+            Scan
+          </button>
           <button className="btn btn-primary" onClick={showForm && !editId ? () => setShowForm(false) : openAdd}>
             {showForm && !editId ? 'Cancel' : <><Plus size={15} /> Add Ingredient</>}
           </button>
         </div>
       </div>
+
+      {/* Scan status banner */}
+      {scanStatus === 'importing' && (
+        <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.88rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>
+          Looking up barcode…
+        </div>
+      )}
+      {scanStatus === 'zero' && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.88rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <AlertTriangle size={15} />
+          Nutrition data was missing — the ingredient was added below. Fill in the values to complete it.
+        </div>
+      )}
 
       {/* Add Form */}
       {showForm && !editId && (
@@ -231,7 +400,6 @@ export default function IngredientsPage() {
                 setExtLoading(true); setExtResults([]);
                 const q = extQuery.trim();
                 if (!q) { setExtResults([]); return; }
-                // detect barcode: numeric and length 8-14
                 const isBarcode = /^\d{8,14}$/.test(q);
                 const url = isBarcode
                   ? `/api/ingredients/search?barcode=${encodeURIComponent(q)}`
@@ -270,7 +438,6 @@ export default function IngredientsPage() {
                       <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
                         {r.brand || ''}{r.brand && r.serving_label ? ' · ' : ''}{r.serving_label ? r.serving_label : r.serving_grams ? `${r.serving_grams}g` : ''}
                       </div>
-                      {/* Zero nutrition warning */}
                       {r.nutrition_incomplete && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.3rem', fontSize: '0.75rem', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '0.2rem 0.5rem', width: 'fit-content' }}>
                           <AlertTriangle size={11} />
@@ -332,7 +499,7 @@ export default function IngredientsPage() {
             </thead>
             <tbody>
               {visible.map(ing => (
-                <tr key={ing.id} className="animate-fade-up">
+                <tr key={ing.id} id={`ing-row-${ing.id}`} className="animate-fade-up">
                   {editId === ing.id ? (
                     <td colSpan="8" style={{ padding: '0' }}>
                       <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 60px 60px 60px 60px 70px 100px', gap: '0.5rem', padding: '0.75rem', background: 'var(--surface2)', alignItems: 'center' }}>
@@ -340,10 +507,10 @@ export default function IngredientsPage() {
                         <select className="form-input" style={{ padding: '0.4rem 0.6rem' }} value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
                           {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                         </select>
-                        <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.calories_100g} onChange={e => setForm({...form, calories_100g: e.target.value})} />
-                        <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.protein_100g} onChange={e => setForm({...form, protein_100g: e.target.value})} />
-                        <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.carbs_100g} onChange={e => setForm({...form, carbs_100g: e.target.value})} />
-                        <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }} value={form.fat_100g} onChange={e => setForm({...form, fat_100g: e.target.value})} />
+                        <input autoFocus required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center', borderColor: !form.calories_100g ? '#f59e0b' : undefined }} placeholder="kcal" value={form.calories_100g} onChange={e => setForm({...form, calories_100g: e.target.value})} />
+                        <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center', borderColor: !form.protein_100g ? '#f59e0b' : undefined }} placeholder="prot" value={form.protein_100g} onChange={e => setForm({...form, protein_100g: e.target.value})} />
+                        <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center', borderColor: !form.carbs_100g ? '#f59e0b' : undefined }} placeholder="carbs" value={form.carbs_100g} onChange={e => setForm({...form, carbs_100g: e.target.value})} />
+                        <input required type="number" step="any" className="form-input" style={{ padding: '0.4rem 0.2rem', textAlign: 'center', borderColor: !form.fat_100g ? '#f59e0b' : undefined }} placeholder="fat" value={form.fat_100g} onChange={e => setForm({...form, fat_100g: e.target.value})} />
                         <select className="form-input" style={{ padding: '0.4rem 0.6rem' }} value={form.status} onChange={e => setForm({...form, status: e.target.value})}><option>Raw</option><option>Cooked</option></select>
                         <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'flex-end' }}>
                           <button type="submit" className="btn-icon" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Check size={13} /></button>
