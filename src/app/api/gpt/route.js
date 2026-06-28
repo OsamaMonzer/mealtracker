@@ -41,6 +41,72 @@ function normName(n) {
   return (n || '').toString().trim().toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
 }
 
+// ── Fuzzy ingredient search ───────────────────────────────────────────────────
+// Adjectives/modifiers that users say but don't appear in DB names
+const NOISE_WORDS = new Set([
+  'raw','cooked','boiled','grilled','fried','baked','steamed','roasted',
+  'fresh','frozen','dried','canned','smoked','salted','unsalted','plain',
+  'whole','boneless','skinless','lean','extra','organic','natural',
+  'low','fat','reduced','light','dark','white','brown','ground','minced',
+  'sliced','diced','chopped','shredded','half','large','small','medium',
+]);
+
+function tokenize(str) {
+  return normName(str)
+    .split(/\s+/)
+    .filter(t => t.length > 1 && !NOISE_WORDS.has(t));
+}
+
+function scoreMatch(queryTokens, candidateName) {
+  const candTokens = tokenize(candidateName);
+  const candFull = normName(candidateName);
+  let score = 0;
+
+  for (const qt of queryTokens) {
+    // Exact token match in candidate
+    if (candTokens.includes(qt)) { score += 10; continue; }
+    // Candidate token starts with query token (prefix match)
+    if (candTokens.some(ct => ct.startsWith(qt) || qt.startsWith(ct))) { score += 6; continue; }
+    // Substring match anywhere in full name
+    if (candFull.includes(qt)) { score += 3; }
+  }
+
+  // Bonus: query tokens cover most of the candidate tokens (not just noise)
+  const coverage = queryTokens.filter(qt => candFull.includes(qt)).length / Math.max(queryTokens.length, 1);
+  score += coverage * 5;
+
+  return score;
+}
+
+/**
+ * Fuzzy search: splits query into meaningful tokens, strips noise words,
+ * scores every ingredient by token overlap, returns sorted matches.
+ */
+async function fuzzySearchIngredients(db, rawQuery) {
+  const tokens = tokenize(rawQuery);
+  if (tokens.length === 0) return [];
+
+  // Build a SQL query that fetches candidates matching ANY token
+  const conditions = tokens.map(() => 'LOWER(name) LIKE ?').join(' OR ');
+  const params = tokens.map(t => `%${t}%`);
+
+  const candidates = await db.all(
+    `SELECT id, name, brand, category, calories_100g, protein_100g, carbs_100g, fat_100g
+     FROM ingredients
+     WHERE status NOT IN ('quick_add','single_ingredient','one_off')
+       AND (${conditions})`,
+    params
+  );
+
+  if (candidates.length === 0) return [];
+
+  // Score and sort
+  const scored = candidates.map(c => ({ ...c, _score: scoreMatch(tokens, c.name) }));
+  scored.sort((a, b) => b._score - a._score);
+
+  return scored;
+}
+
 async function fetchOFF(barcode) {
   const fields = 'product_name,generic_name,brands,nutriments,serving_size,categories_tags,code,_id';
   const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${fields}`,
@@ -142,40 +208,36 @@ export async function POST(request) {
       return NextResponse.json({ recipes: full });
     }
 
-    // ── search_ingredient ────────────────────────────────────────────────
+    // ── search_ingredient (now fuzzy) ────────────────────────────────────
     if (action === 'search_ingredient') {
       const q = (p.query || '').trim();
       if (!q) return NextResponse.json({ error: 'query required' }, { status: 400 });
-      const local = await db.all(`SELECT id, name, brand, category, calories_100g, protein_100g, carbs_100g, fat_100g FROM ingredients WHERE status NOT IN ('quick_add','single_ingredient','one_off') AND (LOWER(name) LIKE ? OR LOWER(brand) LIKE ?)`, [`%${q.toLowerCase()}%`, `%${q.toLowerCase()}%`]);
-      return NextResponse.json({ local_results: local });
+      const results = await fuzzySearchIngredients(db, q);
+      return NextResponse.json({ local_results: results });
     }
 
-    // ── log_food (smart: search → add if missing → log) ──────────────────
+    // ── log_food (smart: fuzzy search → add if missing → log) ────────────
     if (action === 'log_food') {
       const { name, weight_g, meal_type, date,
               calories_100g, protein_100g, carbs_100g, fat_100g } = p;
       if (!name || !weight_g) return NextResponse.json({ error: 'name and weight_g required' }, { status: 400 });
 
-      // 1. Search DB
-      const q = name.trim().toLowerCase();
-      const matches = await db.all(
-        `SELECT id, name, calories_100g, protein_100g, carbs_100g, fat_100g
-         FROM ingredients
-         WHERE status NOT IN ('quick_add','single_ingredient','one_off')
-           AND LOWER(name) LIKE ?`,
-        [`%${q}%`]
-      );
+      // 1. Fuzzy search DB
+      const matches = await fuzzySearchIngredients(db, name);
 
       let ingredient;
       if (matches.length > 0) {
-        // Use closest match (exact first, otherwise first result)
-        ingredient = matches.find(m => normName(m.name) === normName(name)) || matches[0];
-      } else {
+        // Pick best score — if top score is meaningful (>=6) use it
+        ingredient = matches[0]._score >= 6 ? matches[0] : null;
+      }
+
+      if (!ingredient) {
         // 2. Not found — add it using provided nutrition (AI should supply these)
         if (calories_100g === undefined) {
           return NextResponse.json({
             error: 'ingredient_not_found',
             message: `"${name}" not found in database. Please provide calories_100g (and optionally protein_100g, carbs_100g, fat_100g) to add it automatically.`,
+            fuzzy_candidates: matches.slice(0, 5).map(m => ({ id: m.id, name: m.name, score: m._score })),
           }, { status: 404 });
         }
         const res = await db.run(
@@ -186,7 +248,7 @@ export async function POST(request) {
         ingredient = await db.get('SELECT * FROM ingredients WHERE id = ?', [res.lastID]);
       }
 
-      // 3. Log it via log_ingredient logic (find/create single_ingredient recipe)
+      // 3. Log it via single_ingredient recipe wrapper
       const existing = await db.get(
         `SELECT r.id FROM recipes r JOIN recipe_ingredients ri ON r.id = ri.recipe_id
          WHERE r.status = 'single_ingredient' AND ri.ingredient_id = ? LIMIT 1`,
@@ -214,7 +276,8 @@ export async function POST(request) {
         ingredient_name: ingredient.name,
         ingredient_id: ingredient.id,
         weight_g: parseFloat(weight_g),
-        was_in_db: matches.length > 0,
+        was_in_db: true,
+        matched_from: name,
         ...macros,
       });
     }
