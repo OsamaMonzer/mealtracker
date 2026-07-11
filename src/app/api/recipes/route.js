@@ -3,41 +3,57 @@ import { openDb } from '../../../lib/db';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request) {
   try {
     const db = await openDb();
-    const recipes = await db.all("SELECT * FROM recipes WHERE status = 'active' ORDER BY name ASC");
-    
-    const fullRecipes = [];
-    for(const r of recipes) {
-        const ingredients = await db.all(`
-            SELECT i.*, ri.weight_g 
-            FROM recipe_ingredients ri 
-            JOIN ingredients i ON ri.ingredient_id = i.id 
-            WHERE ri.recipe_id = ?
-        `, [r.id]);
-        
-        let totalCals = 0, totalP = 0, totalC = 0, totalF = 0, totalW = 0;
-        
-        ingredients.forEach(i => {
-           const ratio = i.weight_g / 100;
-           totalCals += i.calories_100g * ratio;
-           totalP += i.protein_100g * ratio;
-           totalC += i.carbs_100g * ratio;
-           totalF += i.fat_100g * ratio;
-           totalW += i.weight_g;
-        });
 
-        fullRecipes.push({
-            ...r,
-            ingredients,
-            totalCals, totalP, totalC, totalF, totalW,
-            calsPerPortion: totalCals / r.portions,
-            pPerPortion: totalP / r.portions,
-            cPerPortion: totalC / r.portions,
-            fPerPortion: totalF / r.portions,
-        });
+    // Check if slim mode requested (just id/name/portions for dropdowns)
+    const { searchParams } = new URL(request.url);
+    const slim = searchParams.get('slim') === '1';
+
+    const recipes = await db.all(
+      slim
+        ? "SELECT id, name, portions FROM recipes WHERE status = 'active' ORDER BY name ASC"
+        : "SELECT * FROM recipes WHERE status = 'active' ORDER BY name ASC"
+    );
+
+    if (slim) return NextResponse.json(recipes);
+
+    // Fetch ALL recipe ingredients in one query (no N+1)
+    const allIngredients = await db.all(`
+      SELECT ri.recipe_id, i.name, i.calories_100g, i.protein_100g, i.carbs_100g, i.fat_100g, i.price_kg, ri.weight_g
+      FROM recipe_ingredients ri
+      JOIN ingredients i ON ri.ingredient_id = i.id
+    `);
+
+    // Group ingredients by recipe_id
+    const ingByRecipe = {};
+    for (const ing of allIngredients) {
+      if (!ingByRecipe[ing.recipe_id]) ingByRecipe[ing.recipe_id] = [];
+      ingByRecipe[ing.recipe_id].push(ing);
     }
+
+    const fullRecipes = recipes.map(r => {
+      const ingredients = ingByRecipe[r.id] || [];
+      let totalCals = 0, totalP = 0, totalC = 0, totalF = 0, totalW = 0;
+      ingredients.forEach(i => {
+        const ratio = i.weight_g / 100;
+        totalCals += i.calories_100g * ratio;
+        totalP    += i.protein_100g  * ratio;
+        totalC    += i.carbs_100g    * ratio;
+        totalF    += i.fat_100g      * ratio;
+        totalW    += i.weight_g;
+      });
+      return {
+        ...r,
+        ingredients,
+        totalCals, totalP, totalC, totalF, totalW,
+        calsPerPortion: totalCals / r.portions,
+        pPerPortion:    totalP    / r.portions,
+        cPerPortion:    totalC    / r.portions,
+        fPerPortion:    totalF    / r.portions,
+      };
+    });
 
     return NextResponse.json(fullRecipes);
   } catch (error) {

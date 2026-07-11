@@ -2,20 +2,78 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, UtensilsCrossed, Sunrise, Sun, Moon, Apple, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, UtensilsCrossed, Sunrise, Sun, Moon, Apple, Plus, Trash2, ChevronDown, ChevronUp, Pencil, Check, X } from 'lucide-react';
 import { showToast } from '../../components/ToastContainer';
 import { useSupabaseRealtime } from '../../hooks/useSupabaseRealtime';
 
 const MEAL_ICONS = { Breakfast: Sunrise, Lunch: Sun, Dinner: Moon, Snack: Apple };
+const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
 
+// ── Edit Modal ────────────────────────────────────────────────────────────────
+function EditLogModal({ log, onClose, onSave }) {
+  const [portions, setPortions] = useState(String(log.portions_eaten));
+  const [mealType, setMealType] = useState(log.meal_type);
+  const [saving, setSaving] = useState(false);
+
+  const isIngredient = log.recipe_id && !log.recipe_name?.includes('QUICK_ADD');
+
+  async function handleSave(e) {
+    e.preventDefault();
+    setSaving(true);
+    await onSave(log.id, { portions_eaten: portions, meal_type: mealType });
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', backdropFilter: 'blur(3px)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '480px', padding: '0 0 2rem', boxShadow: '0 -8px 48px rgba(0,0,0,0.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '0.75rem 0 0' }}>
+          <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: '#e0e0e0' }} />
+        </div>
+        <div style={{ padding: '1rem 1.5rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.3rem', color: '#111' }}>Edit Log</div>
+          <button onClick={onClose} style={{ background: '#f3f3f3', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#666' }}><X size={16} /></button>
+        </div>
+        <div style={{ padding: '0.25rem 1.5rem 0.5rem', fontSize: '0.85rem', color: 'var(--text-dim)' }}>{log.recipe_name}</div>
+        <form onSubmit={handleSave} style={{ padding: '0.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>Meal Type</label>
+            <select className="form-input" value={mealType} onChange={e => setMealType(e.target.value)}>
+              {MEAL_TYPES.map(m => <option key={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>
+              {isIngredient ? 'Portions (1 portion = 100g)' : 'Portions'}
+            </label>
+            <input
+              type="number" step="0.1" min="0.01" className="form-input"
+              value={portions} onChange={e => setPortions(e.target.value)} required
+            />
+          </div>
+          <button type="submit" className="btn btn-primary" disabled={saving} style={{ padding: '0.85rem', justifyContent: 'center', marginTop: '0.25rem' }}>
+            {saving ? 'Saving…' : <><Check size={15} /> Save Changes</>}
+          </button>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textAlign: 'center', margin: 0 }}>
+            This only edits this log entry — your recipe stays unchanged.
+          </p>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function DailyTracking() {
-  const [logs, setLogs]       = useState([]);
-  const [recipes, setRecipes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(true);
+  const [logs, setLogs]             = useState([]);
+  const [recipes, setRecipes]       = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [showForm, setShowForm]     = useState(true);
   const [ingredients, setIngredients] = useState([]);
-  const [logMode, setLogMode] = useState('recipe');
+  const [logMode, setLogMode]       = useState('recipe');
   const [expandedLog, setExpandedLog] = useState(null);
+  const [editingLog, setEditingLog] = useState(null);
   // Store full day detail from history API for expanded logs
   const [dayDetails, setDayDetails] = useState({});
   const [form, setForm] = useState({
@@ -29,7 +87,8 @@ export default function DailyTracking() {
     try {
       const [logsData, recipesData, ingsData] = await Promise.all([
         fetch('/api/daily').then(r => r.json()),
-        fetch('/api/recipes').then(r => r.json()),
+        // Use slim endpoint — just id/name/portions needed for the dropdown
+        fetch('/api/recipes?slim=1').then(r => r.json()),
         fetch('/api/ingredients').then(r => r.json()),
       ]);
       setLogs(logsData);
@@ -50,7 +109,7 @@ export default function DailyTracking() {
   );
 
   async function fetchDayDetail(date) {
-    if (dayDetails[date]) return; // already fetched
+    if (dayDetails[date]) return;
     try {
       const data = await fetch(`/api/history?date=${date}`).then(r => r.json());
       setDayDetails(prev => ({ ...prev, [date]: data }));
@@ -77,7 +136,6 @@ export default function DailyTracking() {
     if (res.ok) {
       const newLogs = await (await fetch('/api/daily')).json();
       setLogs(newLogs);
-      // Invalidate the cached day detail so it refreshes
       setDayDetails(prev => { const copy = { ...prev }; delete copy[form.date]; return copy; });
       showToast('Meal logged');
       setForm(f => ({ ...f, quick_add_name: '', quick_add_calories: '', recipe_id: '', ingredient_id: '', weight_g: '100' }));
@@ -90,6 +148,25 @@ export default function DailyTracking() {
     setLogs(logs.filter(l => l.id !== id));
     if (log) setDayDetails(prev => { const copy = { ...prev }; delete copy[log.date]; return copy; });
     showToast('Meal deleted');
+  }
+
+  async function handleEdit(id, changes) {
+    const res = await fetch(`/api/daily/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(changes),
+    });
+    if (res.ok) {
+      // Re-fetch just daily logs for updated macros (single fast query now)
+      const newLogs = await fetch('/api/daily').then(r => r.json());
+      setLogs(newLogs);
+      // Invalidate cached day detail for that log's date
+      const log = logs.find(l => l.id === id);
+      if (log) setDayDetails(prev => { const copy = { ...prev }; delete copy[log.date]; return copy; });
+      showToast('Log updated ✓');
+    } else {
+      showToast('Update failed', 'error');
+    }
   }
 
   async function handleExpand(log) {
@@ -113,6 +190,14 @@ export default function DailyTracking() {
 
   return (
     <main>
+      {editingLog && (
+        <EditLogModal
+          log={editingLog}
+          onClose={() => setEditingLog(null)}
+          onSave={handleEdit}
+        />
+      )}
+
       <div className="page-header" style={{ marginBottom: '2.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Link href="/" className="btn-icon"><ArrowLeft size={18} /></Link>
@@ -218,7 +303,6 @@ export default function DailyTracking() {
               {data.entries.map(log => {
                 const Icon = MEAL_ICONS[log.meal_type] || UtensilsCrossed;
                 const isExpanded = expandedLog === log.id;
-                // Get full log details from history API (has ingredients)
                 const dayData = dayDetails[log.date];
                 const fullLog = dayData?.logs?.find(l => l.id === log.id);
                 const logIngredients = fullLog?.ingredients || [];
@@ -256,12 +340,20 @@ export default function DailyTracking() {
                           {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                         </button>
                       )}
+                      {/* Edit button */}
+                      <button
+                        onClick={() => setEditingLog(log)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: '4px', flexShrink: 0 }}
+                        title="Edit this log entry"
+                      >
+                        <Pencil size={13} />
+                      </button>
                       <button className="btn-icon-danger" onClick={() => handleDelete(log.id)} style={{ flexShrink: 0 }}>
                         <Trash2 size={13} />
                       </button>
                     </div>
 
-                    {/* Expanded ingredient breakdown — uses history API data */}
+                    {/* Expanded ingredient breakdown */}
                     {isExpanded && (
                       <div className="animate-slide-down" style={{ borderTop: '1px solid var(--border)', padding: '0.75rem 1rem 1rem', background: 'var(--card-bg)' }}>
                         {!dayData ? (

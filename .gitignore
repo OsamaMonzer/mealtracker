@@ -38,3 +38,4 @@ meals.db*
 
 .vercel
 .env*
+.codex-tmp/gh-pages-clone/
