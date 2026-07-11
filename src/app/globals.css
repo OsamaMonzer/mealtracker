@@ -4,19 +4,27 @@
 :root {
   --bg:          #f8f7f4;
   --card-bg:     #ffffff;
+  --surface:     #ffffff;
   --surface2:    #f3f2ef;
   --border:      #e8e6e1;
+  --border2:     #d4cdc4;
   --accent:      #4a7c59;
   --accent-light:#e8f0eb;
+  --accent-hover:#3a6347;
   --text-main:   #1a1a18;
   --text-sub:    #4a4a46;
   --text-dim:    #8a8a84;
   --blue:        #2563eb;
+  --blue-light:  #dbeafe;
   --gold:        #d97706;
+  --gold-light:  #fef3c7;
   --red:         #dc2626;
-  --shadow-sm:   0 1px 3px rgba(0,0,0,0.06);
+  --red-light:   #fee2e2;
+  --shadow-xs:   0 1px 2px rgba(0,0,0,0.05);
+  --shadow-sm:   0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-md:   0 4px 16px rgba(0,0,0,0.08);
   --shadow-lg:   0 12px 40px rgba(0,0,0,0.12);
+  --radius-xs:   6px;
   --radius-sm:   8px;
   --radius-md:   14px;
   --radius-lg:   20px;
@@ -41,7 +49,6 @@ main {
   max-width: 860px;
   margin: 0 auto;
   padding: 3rem 2rem 6rem;
-  /* prevent content overflow */
   overflow-x: hidden;
   width: 100%;
 }
@@ -76,6 +83,7 @@ main {
   color: var(--text-dim);
   margin-bottom: 1rem;
 }
+.section-label.green { color: var(--accent); }
 
 /* ── Cards ────────────────────────────────────────────────────────────────── */
 .card {
@@ -84,10 +92,12 @@ main {
   border-radius: var(--radius-lg);
   padding: 1.5rem;
   margin-bottom: 1.25rem;
-  /* critical: prevent card content from overflowing on mobile */
-  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  /* overflow: visible so Recharts tooltips are not clipped */
+  overflow: visible;
   max-width: 100%;
 }
+.card:hover { box-shadow: var(--shadow-md); }
 .card-flat {
   background: transparent;
   border-radius: var(--radius-md);
@@ -128,7 +138,6 @@ main {
   letter-spacing: 0.01em;
   transition: all 0.18s ease;
   text-align: center;
-  /* ensure text doesn't overflow */
   overflow: hidden;
   word-break: break-word;
 }
@@ -165,6 +174,12 @@ main {
   border-color: var(--text-main);
 }
 .btn-primary:hover { opacity: 0.85; background: var(--text-main); }
+.btn-ghost {
+  background: transparent;
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+}
+.btn-ghost:hover { background: var(--accent-light); color: var(--accent-hover); }
 .btn-icon {
   display: inline-flex;
   align-items: center;
@@ -261,11 +276,11 @@ main {
   font-weight: 700;
   letter-spacing: 0.02em;
 }
-.badge-blue  { background:#dbeafe; color:#1d4ed8; }
-.badge-gold  { background:#fef3c7; color:#92400e; }
-.badge-red   { background:#fee2e2; color:#991b1b; }
-.badge-green { background:#dcfce7; color:#166534; }
-.badge-gray  { background:#f3f4f6; color:#374151; }
+.badge-blue  { background: var(--blue-light);  color: #1d4ed8; }
+.badge-gold  { background: var(--gold-light);  color: #92400e; }
+.badge-red   { background: var(--red-light);   color: #991b1b; }
+.badge-green { background: var(--accent-light); color: var(--accent); }
+.badge-gray  { background: var(--surface2);    color: var(--text-sub); }
 
 /* ── Stats Row ────────────────────────────────────────────────────────────── */
 .stats-row {
@@ -279,6 +294,7 @@ main {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 .stat-value {
@@ -334,26 +350,22 @@ main {
 /* ══════════════════════════════════════════════════════════════════════════ */
 
 @media (max-width: 640px) {
-  /* Core layout */
   main {
     padding: 1.5rem 1rem 5rem;
     overflow-x: hidden;
   }
 
-  /* Typography scale down */
   .page-title {
     font-size: 2.2rem;
     letter-spacing: -1px;
   }
 
-  /* Page header stacks on mobile */
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.75rem;
   }
 
-  /* Nav: 2 columns on phone */
   .nav-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 0.6rem;
@@ -364,14 +376,12 @@ main {
     font-size: 0.75rem;
   }
 
-  /* Cards: reduce padding */
   .card {
     padding: 1.1rem;
     border-radius: 16px;
     margin-bottom: 1rem;
   }
 
-  /* Stats row: 3 cols still but tighter, falls to 1 on very small */
   .stats-row {
     grid-template-columns: repeat(3, 1fr);
     gap: 0.5rem;
@@ -386,12 +396,10 @@ main {
     font-size: 0.65rem;
   }
 
-  /* Form grid: single column on mobile */
   .form-grid {
     grid-template-columns: 1fr;
   }
 
-  /* Log form: stack vertically on mobile */
   .log-form-grid {
     grid-template-columns: 1fr 1fr;
     gap: 0.6rem;
@@ -400,7 +408,6 @@ main {
     grid-column: 1 / -1;
   }
 
-  /* Tables: make scrollable inside card on mobile */
   .data-table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -412,7 +419,6 @@ main {
     white-space: nowrap;
   }
 
-  /* Recharts containers must not overflow */
   .recharts-responsive-container {
     max-width: 100% !important;
   }

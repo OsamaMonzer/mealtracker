@@ -76,6 +76,11 @@ export default function DailyTracking() {
   const [editingLog, setEditingLog] = useState(null);
   // Store full day detail from history API for expanded logs
   const [dayDetails, setDayDetails] = useState({});
+  // Edit-before-log state
+  const [editRecipe, setEditRecipe] = useState(null); // { id, name, portions }
+  const [editDate, setEditDate] = useState(null);
+  const [editMealType, setEditMealType] = useState(null);
+
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
     meal_type: 'Breakfast', recipe_id: '', portions_eaten: '1',
@@ -142,6 +147,34 @@ export default function DailyTracking() {
     }
   }
 
+  // Called from the EditBeforeLogPanel when user taps Log
+  async function handleEditAndLog({ rows, portions, recipeName }) {
+    try {
+      const res = await fetch('/api/daily/one-off', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: editDate,
+          meal_type: editMealType,
+          recipe_name: recipeName,
+          portions,
+          ingredients: rows.map(r => ({ ingredient_id: r.ingredient_id, weight_g: parseFloat(r.weight_g) || 0 })),
+        }),
+      });
+      if (res.ok) {
+        const newLogs = await (await fetch('/api/daily')).json();
+        setLogs(newLogs);
+        setDayDetails(prev => { const copy = { ...prev }; delete copy[editDate]; return copy; });
+        showToast('Meal logged ✓');
+        setEditRecipe(null);
+      } else {
+        showToast('Failed to log', 'error');
+      }
+    } catch {
+      showToast('Failed to log', 'error');
+    }
+  }
+
   async function handleDelete(id) {
     const log = logs.find(l => l.id === id);
     await fetch(`/api/daily/${id}`, { method: 'DELETE' });
@@ -170,10 +203,7 @@ export default function DailyTracking() {
   }
 
   async function handleExpand(log) {
-    if (expandedLog === log.id) {
-      setExpandedLog(null);
-      return;
-    }
+    if (expandedLog === log.id) { setExpandedLog(null); return; }
     setExpandedLog(log.id);
     await fetchDayDetail(log.date);
   }
@@ -187,6 +217,9 @@ export default function DailyTracking() {
     acc[log.date].entries.push(log);
     return acc;
   }, {});
+
+  // Which recipe object is selected in the form?
+  const selectedRecipe = recipes.find(r => String(r.id) === String(form.recipe_id));
 
   return (
     <main>
@@ -276,6 +309,25 @@ export default function DailyTracking() {
             )}
             <button type="submit" className="btn btn-primary" style={{ height: '44px', alignSelf: 'flex-end' }}>Log</button>
           </form>
+
+          {/* Edit & Log button — only shown when a recipe is selected */}
+          {logMode === 'recipe' && selectedRecipe && (
+            <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditRecipe(selectedRecipe);
+                  setEditDate(form.date);
+                  setEditMealType(form.meal_type);
+                }}
+                className="btn"
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', border: '1px dashed var(--border)', color: 'var(--text-sub)', fontSize: '0.85rem' }}
+              >
+                <Pencil size={13} />
+                Edit ingredients for today only
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -309,7 +361,6 @@ export default function DailyTracking() {
 
                 return (
                   <div key={log.id} style={{ background: 'var(--surface2)', borderRadius: '12px', overflow: 'hidden' }}>
-                    {/* Main row */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.85rem 1rem' }}>
                       <Icon size={15} color="var(--text-dim)" style={{ flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -330,7 +381,6 @@ export default function DailyTracking() {
                           <span style={{ color: 'var(--red)' }}>F{log.fat?.toFixed(0) ?? '—'}</span>
                         </div>
                       </div>
-                      {/* Expand button — for recipe logs */}
                       {log.recipe_id && log.recipe_id !== 'QUICK_ADD' && (
                         <button
                           onClick={() => handleExpand(log)}
