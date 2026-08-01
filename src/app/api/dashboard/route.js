@@ -92,8 +92,11 @@ export async function GET() {
       Calories: Math.round(dailyHash[d].cals),
     }));
 
+    const { data: userGoal } = await supabase.from('goals').select('display_name').eq('user_id', user.id).maybeSingle();
+    const dbName = userGoal?.display_name;
+
     return NextResponse.json({
-      userName: user.user_metadata?.display_name || user.user_metadata?.full_name || 'My',
+      userName: dbName || user.user_metadata?.display_name || user.user_metadata?.full_name || 'My',
       recipesSaved: count,
       startingWeight,
       currentWeight,

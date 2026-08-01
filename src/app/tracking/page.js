@@ -319,7 +319,9 @@ export default function DailyTracking() {
       <div className="page-header" style={{ marginBottom: '2.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Link href="/" className="btn-icon"><ArrowLeft size={18} /></Link>
-          <h1 className="page-title animate-fade-up" style={{ fontSize: '2.5rem', margin: 0 }}>Daily Tracking</h1>
+          <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <h1 className="page-title animate-fade-up" style={{ fontSize: '2.5rem', margin: 0 }}>Daily Tracking</h1>
+          </Link>
         </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <button className="btn btn-primary" onClick={() => setShowForm(s => !s)}>

@@ -42,6 +42,8 @@ export async function POST(request) {
       weight_target: Number(data.weight_target)  || 75,
       user_id: user.id,
     };
+    
+    if (data.display_name) payload.display_name = data.display_name;
 
     // Check if a row already exists for this user
     const { data: existing } = await supabase

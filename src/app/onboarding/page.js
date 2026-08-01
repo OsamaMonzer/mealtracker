@@ -44,7 +44,7 @@ export default function OnboardingPage() {
       const res = await fetch('/api/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({ ...formData, display_name: formData.name })
       });
       
       if (!res.ok) throw new Error('Failed to set goals');
