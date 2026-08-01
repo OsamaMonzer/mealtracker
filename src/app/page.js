@@ -276,6 +276,7 @@ export default function Home() {
   const [photoLog, setPhotoLog] = useState(null);
   const [showGoals, setShowGoals] = useState(false);
   const [goals, setGoals] = useState({ calorie_goal: 1800, protein_goal: 150, carbs_goal: 200, fat_goal: 60, weight_target: 75 });
+  const [goalsChecked, setGoalsChecked] = useState(false);
 
   const todayStr = new Date().toISOString().split('T')[0];
   const hour = new Date().getHours();
@@ -297,11 +298,12 @@ export default function Home() {
     try {
       const g = await (await fetch('/api/goals')).json();
       if (g.needsOnboarding) {
-        router.push('/onboarding');
+        router.replace('/onboarding');
         return;
       }
       setGoals(g);
     } catch { /* ignore */ }
+    finally { setGoalsChecked(true); }
   }
 
   useEffect(() => { fetchDashboard(); fetchGoals(); }, []);
@@ -392,6 +394,8 @@ export default function Home() {
   const todayP = data?.todayMacros?.p ?? 0;
   const todayC = data?.todayMacros?.c ?? 0;
   const todayF = data?.todayMacros?.f ?? 0;
+
+  if (!goalsChecked) return null;
 
   return (
     <main>

@@ -11,11 +11,14 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { data: row } = await supabase
+    // .maybeSingle() returns null (not an error) when no row is found
+    const { data: row, error } = await supabase
       .from('goals')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
 
     return NextResponse.json(row || { ...DEFAULTS, needsOnboarding: true });
   } catch (e) {
@@ -40,9 +43,26 @@ export async function POST(request) {
       user_id: user.id,
     };
 
-    const { error } = await supabase
+    // Check if a row already exists for this user
+    const { data: existing } = await supabase
       .from('goals')
-      .upsert(payload, { onConflict: 'user_id' });
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    let error;
+    if (existing) {
+      // Update existing row
+      ({ error } = await supabase
+        .from('goals')
+        .update(payload)
+        .eq('user_id', user.id));
+    } else {
+      // Insert new row
+      ({ error } = await supabase
+        .from('goals')
+        .insert(payload));
+    }
 
     if (error) throw new Error(error.message);
 
