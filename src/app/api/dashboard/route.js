@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { openDb } from '../../../lib/db';
 import { createClient } from '../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -10,51 +9,69 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = await openDb();
+    // 1. Fetch Weight Logs
+    const { data: weights, error: wError } = await supabase
+      .from('weight_logs')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('date', { ascending: true });
+    
+    if (wError) throw new Error(wError.message);
 
-    const { count } = await db.get('SELECT COUNT(*) as count FROM recipes WHERE user_id = ?', [user.id]) || { count: 0 };
-
-    const weights = await db.all('SELECT * FROM weight_logs WHERE user_id = ? ORDER BY date ASC', [user.id]);
     const startingWeight = weights.length > 0 ? weights[0].weight_kg : null;
     const currentWeight = weights.length > 0 ? weights[weights.length - 1].weight_kg : null;
     const weightChange = startingWeight && currentWeight ? (currentWeight - startingWeight).toFixed(1) : 0;
 
-    const logs = await db.all(`
-      SELECT d.date, d.portions_eaten, r.portions as recipe_portions, d.recipe_id
-      FROM daily_logs d
-      JOIN recipes r ON d.recipe_id = r.id
-      WHERE d.user_id = ?
-      ORDER BY d.date ASC
-    `, [user.id]);
+    // 2. Fetch Recipes and calculate their macros
+    // Using Supabase embedded joins to retrieve recipe_ingredients and their nested ingredients
+    const { data: allReq, count, error: rError } = await supabase
+      .from('recipes')
+      .select(`
+        id, portions,
+        recipe_ingredients (
+          weight_g,
+          ingredients (
+            calories_100g, protein_100g, carbs_100g, fat_100g
+          )
+        )
+      `, { count: 'exact' })
+      .eq('user_id', user.id);
 
-    const allReq = await db.all(`
-      SELECT ri.recipe_id, ri.weight_g, i.calories_100g, i.protein_100g, i.carbs_100g, i.fat_100g
-      FROM recipe_ingredients ri
-      JOIN ingredients i ON ri.ingredient_id = i.id
-      JOIN recipes r ON ri.recipe_id = r.id
-      WHERE r.user_id = ?
-    `, [user.id]);
+    if (rError) throw new Error(rError.message);
 
     const recipeMacros = {};
-    allReq.forEach(row => {
-      if (!recipeMacros[row.recipe_id]) recipeMacros[row.recipe_id] = { c: 0, p: 0, cb: 0, f: 0 };
-      const ratio = row.weight_g / 100;
-      recipeMacros[row.recipe_id].c += row.calories_100g * ratio;
-      recipeMacros[row.recipe_id].p += row.protein_100g * ratio;
-      recipeMacros[row.recipe_id].cb += row.carbs_100g * ratio;
-      recipeMacros[row.recipe_id].f += row.fat_100g * ratio;
+    allReq.forEach(recipe => {
+      let c = 0, p = 0, cb = 0, f = 0;
+      (recipe.recipe_ingredients || []).forEach(ri => {
+        const ratio = ri.weight_g / 100;
+        const ing = ri.ingredients || {};
+        c += (ing.calories_100g || 0) * ratio;
+        p += (ing.protein_100g || 0) * ratio;
+        cb += (ing.carbs_100g || 0) * ratio;
+        f += (ing.fat_100g || 0) * ratio;
+      });
+      recipeMacros[recipe.id] = { c, p, cb, f, portions: recipe.portions || 1 };
     });
+
+    // 3. Fetch Daily Logs
+    const { data: logs, error: lError } = await supabase
+      .from('daily_logs')
+      .select('date, portions_eaten, recipe_id')
+      .eq('user_id', user.id)
+      .order('date', { ascending: true });
+      
+    if (lError) throw new Error(lError.message);
 
     const dailyHash = {};
     logs.forEach(log => {
-      const macros = recipeMacros[log.recipe_id] || { c: 0, p: 0, cb: 0, f: 0 };
-      const portions = log.portions_eaten / log.recipe_portions;
+      const macros = recipeMacros[log.recipe_id] || { c: 0, p: 0, cb: 0, f: 0, portions: 1 };
+      const portionsPlayed = log.portions_eaten / macros.portions;
       const date = log.date;
       if (!dailyHash[date]) dailyHash[date] = { cals: 0, p: 0, c: 0, f: 0 };
-      dailyHash[date].cals += macros.c * portions;
-      dailyHash[date].p += macros.p * portions;
-      dailyHash[date].c += macros.cb * portions;
-      dailyHash[date].f += macros.f * portions;
+      dailyHash[date].cals += macros.c * portionsPlayed;
+      dailyHash[date].p += macros.p * portionsPlayed;
+      dailyHash[date].c += macros.cb * portionsPlayed;
+      dailyHash[date].f += macros.f * portionsPlayed;
     });
 
     const todayDate = new Date().toISOString().split('T')[0];
@@ -90,7 +107,7 @@ export async function GET() {
       weeklyAvgCals: Math.round(weeklyAvgCals),
       chartData,
       allDates,
-      weightLogData: weights.slice(-14).map(w => ({
+      weightLogData: (weights || []).slice(-14).map(w => ({
         name: new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
         Weight: w.weight_kg,
         hasPhoto: !!w.photo_url,
