@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { openDb } from '../../../lib/db';
 import { createClient } from '../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -12,8 +11,12 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = await openDb();
-    const row = await db.get('SELECT * FROM goals WHERE user_id = ?', [user.id]);
+    const { data: row } = await supabase
+      .from('goals')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
     return NextResponse.json(row || { ...DEFAULTS, needsOnboarding: true });
   } catch (e) {
     return NextResponse.json(DEFAULTS);
@@ -27,34 +30,22 @@ export async function POST(request) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const data = await request.json();
-    const db = await openDb();
 
-    const existing = await db.get('SELECT id FROM goals WHERE user_id = ?', [user.id]);
-    if (existing) {
-      await db.run(
-        'UPDATE goals SET calorie_goal=?, protein_goal=?, carbs_goal=?, fat_goal=?, weight_target=? WHERE user_id=?',
-        [
-          Number(data.calorie_goal) || 1800,
-          Number(data.protein_goal) || 150,
-          Number(data.carbs_goal) || 200,
-          Number(data.fat_goal) || 60,
-          Number(data.weight_target) || 75,
-          user.id,
-        ]
-      );
-    } else {
-      await db.run(
-        'INSERT INTO goals (calorie_goal, protein_goal, carbs_goal, fat_goal, weight_target, user_id) VALUES (?, ?, ?, ?, ?, ?)',
-        [
-          Number(data.calorie_goal) || 1800,
-          Number(data.protein_goal) || 150,
-          Number(data.carbs_goal) || 200,
-          Number(data.fat_goal) || 60,
-          Number(data.weight_target) || 75,
-          user.id,
-        ]
-      );
-    }
+    const payload = {
+      calorie_goal:  Number(data.calorie_goal)  || 1800,
+      protein_goal:  Number(data.protein_goal)  || 150,
+      carbs_goal:    Number(data.carbs_goal)     || 200,
+      fat_goal:      Number(data.fat_goal)       || 60,
+      weight_target: Number(data.weight_target)  || 75,
+      user_id: user.id,
+    };
+
+    const { error } = await supabase
+      .from('goals')
+      .upsert(payload, { onConflict: 'user_id' });
+
+    if (error) throw new Error(error.message);
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
