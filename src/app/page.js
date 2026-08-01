@@ -548,7 +548,7 @@ export default function Home() {
           </div>
 
           {/* Charts — original 2-column side-by-side layout */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+          <div className="charts-grid">
 
             {/* Calorie Chart */}
             <div className="card animate-fade-up stagger-4" style={{ height: '280px' }}>

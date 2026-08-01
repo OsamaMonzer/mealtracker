@@ -7,7 +7,15 @@ export async function GET() {
   try {
     const db = await openDb();
 
-    // Single query: aggregate all recipe ingredient macros per log in one round trip
+    // Limit to the most recent 15 distinct dates to prevent performance issues
+    const datesObj = await db.all('SELECT DISTINCT date FROM daily_logs ORDER BY date DESC LIMIT 15');
+    const dateList = datesObj.map(d => d.date);
+
+    if (dateList.length === 0) return NextResponse.json([]);
+
+    const placeholders = dateList.map(() => '?').join(',');
+
+    // Single query: aggregate all recipe ingredient macros per log for the last 15 days in one round trip
     const logs = await db.all(`
       SELECT
         d.id,
@@ -25,9 +33,10 @@ export async function GET() {
       JOIN recipes r ON d.recipe_id = r.id
       LEFT JOIN recipe_ingredients ri ON ri.recipe_id = r.id
       LEFT JOIN ingredients i ON i.id = ri.ingredient_id
+      WHERE d.date IN (${placeholders})
       GROUP BY d.id, d.date, d.meal_type, d.recipe_id, d.portions_eaten, r.name, r.portions
       ORDER BY d.date DESC, d.id DESC
-    `);
+    `, dateList);
 
     const fullLogs = logs.map(log => {
       const portions = log.recipe_portions || 1;

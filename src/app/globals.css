@@ -115,6 +115,18 @@ main {
   margin-bottom: 2.5rem;
 }
 
+/* ── Charts Grid ──────────────────────────────────────────────────────────── */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+@media (max-width: 768px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Nav Grid ─────────────────────────────────────────────────────────────── */
 .nav-grid {
   display: grid;
