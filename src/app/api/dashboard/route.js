@@ -76,7 +76,7 @@ export async function GET() {
     }));
 
     return NextResponse.json({
-      userName: user.user_metadata?.full_name || 'My',
+      userName: user.user_metadata?.display_name || user.user_metadata?.full_name || 'My',
       recipesSaved: count,
       startingWeight,
       currentWeight,
