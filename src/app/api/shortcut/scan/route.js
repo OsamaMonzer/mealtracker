@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { openDb } from '../../../../lib/db';
+import { createClient } from '../../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,10 +80,16 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    const db = await openDb();
-    const localRows = await db.all(
-      "SELECT * FROM ingredients WHERE status NOT IN ('quick_add','single_ingredient','one_off')"
-    );
+    const supabase = createClient();
+    const osamaId = '9cc56a4b-9b15-4f91-83e1-42137709fe20'; // Hardcoded for shortcut isolation
+
+    const { data: localRows } = await supabase
+      .from('ingredients')
+      .select('*')
+      .neq('status', 'quick_add')
+      .neq('status', 'single_ingredient')
+      .neq('status', 'one_off')
+      .eq('user_id', osamaId);
 
     const product = await fetchProduct(barcode);
 
@@ -113,24 +119,29 @@ export async function POST(request) {
     }
 
     // Save to DB
-    const res = await db.run(
-      `INSERT INTO ingredients (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, null, ?, ?, ?)`,
-      [
+    const { data: saved, error } = await supabase
+      .from('ingredients')
+      .insert({
         name,
-        product.categories_tags?.[0]
+        category: product.categories_tags?.[0]
           ? product.categories_tags[0].replace(/^en:/, '').replace(/-/g, ' ')
           : 'Other',
-        product.brands || '',
-        'Raw',
-        cals, prot, carb, fat,
-        `Scanned via Shortcut — barcode ${barcode}`,
-        serv.label || product.serving_size || null,
-        serv.grams || null,
-      ]
-    );
+        brand: product.brands || '',
+        status: 'Raw',
+        calories_100g: cals,
+        protein_100g: prot,
+        carbs_100g: carb,
+        fat_100g: fat,
+        notes: `Scanned via Shortcut — barcode ${barcode}`,
+        serving_label: serv.label || product.serving_size || null,
+        serving_grams: serv.grams || null,
+        user_id: osamaId
+      })
+      .select()
+      .single();
 
-    const saved = await db.get('SELECT * FROM ingredients WHERE id = ?', [res.lastID]);
+    if (error) throw new Error(error.message);
+
     return NextResponse.json({
       status: 'added',
       message: `✅ Added: ${name}\n${cals} kcal · P ${prot}g · C ${carb}g · F ${fat}g (per 100g)`,
