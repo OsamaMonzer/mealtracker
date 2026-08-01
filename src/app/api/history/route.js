@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { openDb } from '../../../lib/db';
+import { createClient } from '../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
     if (!date) return NextResponse.json({ error: 'date required' }, { status: 400 });
@@ -16,9 +21,9 @@ export async function GET(request) {
              r.name as recipe_name, r.portions as recipe_portions
       FROM daily_logs d
       JOIN recipes r ON d.recipe_id = r.id
-      WHERE d.date = ?
+      WHERE d.date = ? AND d.user_id = ?
       ORDER BY d.id ASC
-    `, [date]);
+    `, [date, user.id]);
 
     if (!logs.length) return NextResponse.json({ date, logs: [], totals: { cals: 0, p: 0, c: 0, f: 0 } });
 

@@ -1,10 +1,20 @@
 import { NextResponse } from 'next/server';
 import { openDb } from '../../../../lib/db';
+import { createClient } from '../../../../utils/supabase/server';
 
 export async function DELETE(request, { params }) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const db = await openDb();
-    await db.run('DELETE FROM daily_logs WHERE id = ?', [params.id]);
+    
+    // Verify ownership
+    const existing = await db.get('SELECT id FROM daily_logs WHERE id = ? AND user_id = ?', [params.id, user.id]);
+    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    await db.run('DELETE FROM daily_logs WHERE id = ? AND user_id = ?', [params.id, user.id]);
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -13,9 +23,17 @@ export async function DELETE(request, { params }) {
 
 export async function PATCH(request, { params }) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const body = await request.json();
     const { portions_eaten, meal_type, ingredients, recipe_id } = body;
     const db = await openDb();
+
+    // Verify ownership
+    const existing = await db.get('SELECT id FROM daily_logs WHERE id = ? AND user_id = ?', [params.id, user.id]);
+    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     // ── If ingredient list is provided, create a snapshot recipe ────────────
     if (ingredients && Array.isArray(ingredients) && ingredients.length > 0) {
@@ -26,8 +44,8 @@ export async function PATCH(request, { params }) {
       // Create a hidden snapshot recipe (portions=1, status='log_snapshot')
       const baseName = log.recipe_name.replace(/ \[custom\]$/, '');
       const recResult = await db.run(
-        "INSERT INTO recipes (name, portions, status) VALUES (?, 1, 'log_snapshot')",
-        [`${baseName} [custom]`]
+        "INSERT INTO recipes (name, portions, status, user_id) VALUES (?, 1, 'log_snapshot', ?)",
+        [`${baseName} [custom]`, user.id]
       );
       const newRecipeId = recResult.lastID;
 
@@ -59,7 +77,8 @@ export async function PATCH(request, { params }) {
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
     values.push(params.id);
-    await db.run(`UPDATE daily_logs SET ${fields.join(', ')} WHERE id = ?`, values);
+    values.push(user.id);
+    await db.run(`UPDATE daily_logs SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`, values);
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

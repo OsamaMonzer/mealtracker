@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server';
 import { openDb } from '../../../lib/db';
+import { createClient } from '../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const db = await openDb();
 
     // Limit to the most recent 15 distinct dates to prevent performance issues
-    const datesObj = await db.all('SELECT DISTINCT date FROM daily_logs ORDER BY date DESC LIMIT 15');
+    const datesObj = await db.all('SELECT DISTINCT date FROM daily_logs WHERE user_id = ? ORDER BY date DESC LIMIT 15', [user.id]);
     const dateList = datesObj.map(d => d.date);
 
     if (dateList.length === 0) return NextResponse.json([]);
@@ -33,10 +38,10 @@ export async function GET() {
       JOIN recipes r ON d.recipe_id = r.id
       LEFT JOIN recipe_ingredients ri ON ri.recipe_id = r.id
       LEFT JOIN ingredients i ON i.id = ri.ingredient_id
-      WHERE d.date IN (${placeholders})
+      WHERE d.date IN (${placeholders}) AND d.user_id = ?
       GROUP BY d.id, d.date, d.meal_type, d.recipe_id, d.portions_eaten, r.name, r.portions
       ORDER BY d.date DESC, d.id DESC
-    `, dateList);
+    `, [...dateList, user.id]);
 
     const fullLogs = logs.map(log => {
       const portions = log.recipe_portions || 1;
@@ -63,6 +68,10 @@ export async function GET() {
 
 export async function POST(request) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const data = await request.json();
     let { date, meal_type, recipe_id, portions_eaten, quick_add_name, quick_add_calories, ingredient_id, weight_g } = data;
     
@@ -92,7 +101,7 @@ export async function POST(request) {
                 if (!ing) throw new Error("Ingredient not found");
                 
                 // Create single ingredient hidden recipe
-                const recResult = await db.run("INSERT INTO recipes (name, portions, status) VALUES (?, 1, 'single_ingredient')", [ing.name]);
+                const recResult = await db.run("INSERT INTO recipes (name, portions, status, user_id) VALUES (?, 1, 'single_ingredient', ?)", [ing.name, user.id]);
                 recipe_id = recResult.lastID;
                 
                 // Link ingredient 100g = 1 portion
@@ -121,13 +130,13 @@ export async function POST(request) {
             // Create hidden ingredient with unique internal name
             const ingResult = await db.run(`
                 INSERT INTO ingredients 
-                (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams) 
-                VALUES (?, 'Other', '', 'quick_add', ?, 0, 0, 0, null, '', null, null)`,
-                [uniqueKey, parseFloat(quick_add_calories)]
+                (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams, user_id) 
+                VALUES (?, 'Other', '', 'quick_add', ?, 0, 0, 0, null, '', null, null, ?)`,
+                [uniqueKey, parseFloat(quick_add_calories), user.id]
             );
             
             // Recipe keeps the user-friendly display name
-            const recResult = await db.run("INSERT INTO recipes (name, portions, status) VALUES (?, 1, 'quick_add')", [quick_add_name]);
+            const recResult = await db.run("INSERT INTO recipes (name, portions, status, user_id) VALUES (?, 1, 'quick_add', ?)", [quick_add_name, user.id]);
             recipe_id = recResult.lastID;
             
             // Link them
@@ -143,8 +152,8 @@ export async function POST(request) {
         return NextResponse.json({error:'Invalid data'}, {status: 400});
     }
 
-    const res = await db.run('INSERT INTO daily_logs (date, meal_type, recipe_id, portions_eaten) VALUES (?, ?, ?, ?)', 
-        [date, meal_type || 'Snack', recipe_id, parseFloat(portions_eaten)]);
+    const res = await db.run('INSERT INTO daily_logs (date, meal_type, recipe_id, portions_eaten, user_id) VALUES (?, ?, ?, ?, ?)', 
+        [date, meal_type || 'Snack', recipe_id, parseFloat(portions_eaten), user.id]);
     
     return NextResponse.json({ success: true, id: res.lastID });
   } catch (error) {

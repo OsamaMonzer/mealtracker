@@ -1,15 +1,20 @@
 import { NextResponse } from 'next/server';
 import { openDb } from '../../../lib/db';
+import { createClient } from '../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const db = await openDb();
 
-    const { count } = await db.get('SELECT COUNT(*) as count FROM recipes') || { count: 0 };
+    const { count } = await db.get('SELECT COUNT(*) as count FROM recipes WHERE user_id = ?', [user.id]) || { count: 0 };
 
-    const weights = await db.all('SELECT * FROM weight_logs ORDER BY date ASC');
+    const weights = await db.all('SELECT * FROM weight_logs WHERE user_id = ? ORDER BY date ASC', [user.id]);
     const startingWeight = weights.length > 0 ? weights[0].weight_kg : null;
     const currentWeight = weights.length > 0 ? weights[weights.length - 1].weight_kg : null;
     const weightChange = startingWeight && currentWeight ? (currentWeight - startingWeight).toFixed(1) : 0;
@@ -18,14 +23,17 @@ export async function GET() {
       SELECT d.date, d.portions_eaten, r.portions as recipe_portions, d.recipe_id
       FROM daily_logs d
       JOIN recipes r ON d.recipe_id = r.id
+      WHERE d.user_id = ?
       ORDER BY d.date ASC
-    `);
+    `, [user.id]);
 
     const allReq = await db.all(`
       SELECT ri.recipe_id, ri.weight_g, i.calories_100g, i.protein_100g, i.carbs_100g, i.fat_100g
       FROM recipe_ingredients ri
       JOIN ingredients i ON ri.ingredient_id = i.id
-    `);
+      JOIN recipes r ON ri.recipe_id = r.id
+      WHERE r.user_id = ?
+    `, [user.id]);
 
     const recipeMacros = {};
     allReq.forEach(row => {

@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime';
 import { showToast } from '../components/ToastContainer';
+import UserNav from '../components/UserNav';
 
 // ── Streak calculator ─────────────────────────────────────────────────────
 function calcStreak(allDates) {
@@ -404,13 +405,16 @@ export default function Home() {
               {loading ? 'Your personal nutrition & recipe hub.' : greeting.sub}
             </p>
           </div>
-          <button
-            onClick={() => setShowGoals(true)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: '0.5rem', marginTop: '0.25rem', borderRadius: '8px', flexShrink: 0 }}
-            title="Adjust goals"
-          >
-            <Settings size={18} />
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexShrink: 0, marginTop: '0.25rem' }}>
+            <button
+              onClick={() => setShowGoals(true)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: '0.5rem', borderRadius: '8px' }}
+              title="Adjust goals"
+            >
+              <Settings size={18} />
+            </button>
+            <UserNav />
+          </div>
         </div>
       </div>
 

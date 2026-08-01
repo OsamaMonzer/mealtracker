@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { openDb } from '../../../../lib/db';
+import { createClient } from '../../../../utils/supabase/server';
 
 function numberOrZero(value) {
   const parsed = parseFloat(value);
@@ -29,6 +30,10 @@ function parseServing(serving) {
 
 export async function PUT(request, { params }) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const data = await request.json();
     const { name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_g } = data;
     const calories = parseFloat(calories_100g);
@@ -42,10 +47,15 @@ export async function PUT(request, { params }) {
     const servingGrams = parsed.grams;
 
     const db = await openDb();
+
+    // Verify ownership (user_id must match, or ingredient is public with user_id IS NULL — don't allow editing shared ones)
+    const existing = await db.get('SELECT id FROM ingredients WHERE id = ? AND user_id = ?', [params.id, user.id]);
+    if (!existing) return NextResponse.json({ error: 'Not found or not yours' }, { status: 404 });
+
     await db.run(`
       UPDATE ingredients SET name=?, category=?, brand=?, status=?, calories_100g=?, protein_100g=?, carbs_100g=?, fat_100g=?, price_kg=?, notes=?, serving_label=?, serving_grams=?
-      WHERE id=?`,
-      [name, category, brand, status, calories, protein, numberOrZero(carbs_100g), numberOrZero(fat_100g), optionalNumber(price_kg), notes, servingLabel, servingGrams, params.id]
+      WHERE id=? AND user_id=?`,
+      [name, category, brand, status, calories, protein, numberOrZero(carbs_100g), numberOrZero(fat_100g), optionalNumber(price_kg), notes, servingLabel, servingGrams, params.id, user.id]
     );
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -55,8 +65,17 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const db = await openDb();
-    await db.run('DELETE FROM ingredients WHERE id = ?', [params.id]);
+
+    // Only allow deleting own ingredients
+    const existing = await db.get('SELECT id FROM ingredients WHERE id = ? AND user_id = ?', [params.id, user.id]);
+    if (!existing) return NextResponse.json({ error: 'Not found or not yours' }, { status: 404 });
+
+    await db.run('DELETE FROM ingredients WHERE id = ? AND user_id = ?', [params.id, user.id]);
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

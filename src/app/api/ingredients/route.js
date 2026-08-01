@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { openDb } from '../../../lib/db';
+import { createClient } from '../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,8 +16,12 @@ function optionalNumber(value) {
 
 export async function GET() {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const db = await openDb();
-    const ingredients = await db.all("SELECT * FROM ingredients WHERE status != 'quick_add' ORDER BY name ASC");
+    const ingredients = await db.all("SELECT * FROM ingredients WHERE status != 'quick_add' AND (user_id IS NULL OR user_id = ?) ORDER BY name ASC", [user.id]);
     return NextResponse.json(ingredients);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -43,6 +48,10 @@ function parseServing(serving) {
 
 export async function POST(request) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const data = await request.json();
     const { name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_g } = data;
     
@@ -60,9 +69,9 @@ export async function POST(request) {
     const db = await openDb();
     const result = await db.run(`
       INSERT INTO ingredients 
-      (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, category || '', brand || '', status || '', calories, protein, numberOrZero(carbs_100g), numberOrZero(fat_100g), optionalNumber(price_kg), notes || '', servingLabel, servingGrams]
+      (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams, user_id) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, category || '', brand || '', status || '', calories, protein, numberOrZero(carbs_100g), numberOrZero(fat_100g), optionalNumber(price_kg), notes || '', servingLabel, servingGrams, user.id]
     );
     
     return NextResponse.json({ id: result.lastID, ...data, serving_label: servingLabel, serving_grams: servingGrams }, { status: 201 });

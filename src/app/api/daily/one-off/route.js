@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { openDb } from '../../../../lib/db';
+import { createClient } from '../../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,10 @@ export const dynamic = 'force-dynamic';
 // and logs it for the given date — without touching the saved recipe.
 export async function POST(request) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { date, meal_type, recipe_name, portions, ingredients } = await request.json();
 
     if (!date || !recipe_name || !ingredients || ingredients.length === 0) {
@@ -20,8 +25,8 @@ export async function POST(request) {
     try {
       // Create a hidden one-off recipe
       const recRes = await db.run(
-        "INSERT INTO recipes (name, portions, status) VALUES (?, ?, 'one_off')",
-        [recipe_name, portions || 1]
+        "INSERT INTO recipes (name, portions, status, user_id) VALUES (?, ?, 'one_off', ?)",
+        [recipe_name, portions || 1, user.id]
       );
       const recipeId = recRes.lastID;
 
@@ -36,8 +41,8 @@ export async function POST(request) {
 
       // Log it — portions=1 because the recipe itself already encodes the full quantity
       await db.run(
-        'INSERT INTO daily_logs (date, meal_type, recipe_id, portions_eaten) VALUES (?, ?, ?, ?)',
-        [date, meal_type || 'Snack', recipeId, portions || 1]
+        'INSERT INTO daily_logs (date, meal_type, recipe_id, portions_eaten, user_id) VALUES (?, ?, ?, ?, ?)',
+        [date, meal_type || 'Snack', recipeId, portions || 1, user.id]
       );
 
       await db.exec('COMMIT');

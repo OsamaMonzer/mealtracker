@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { openDb } from '../../../lib/db';
+import { createClient } from '../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const db = await openDb();
 
     // Check if slim mode requested (just id/name/portions for dropdowns)
@@ -13,8 +18,9 @@ export async function GET(request) {
 
     const recipes = await db.all(
       slim
-        ? "SELECT id, name, portions FROM recipes WHERE status = 'active' ORDER BY name ASC"
-        : "SELECT * FROM recipes WHERE status = 'active' ORDER BY name ASC"
+        ? "SELECT id, name, portions FROM recipes WHERE status = 'active' AND user_id = ? ORDER BY name ASC"
+        : "SELECT * FROM recipes WHERE status = 'active' AND user_id = ? ORDER BY name ASC",
+      [user.id]
     );
 
     if (slim) return NextResponse.json(recipes);
@@ -63,6 +69,10 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { name, portions, ingredients } = await request.json();
     if (!name || !ingredients || ingredients.length === 0) return NextResponse.json({error:'Invalid data'}, {status: 400});
 
@@ -70,7 +80,7 @@ export async function POST(request) {
     
     await db.exec('BEGIN TRANSACTION');
     try {
-        const res = await db.run('INSERT INTO recipes (name, portions) VALUES (?, ?)', [name, portions || 1]);
+        const res = await db.run('INSERT INTO recipes (name, portions, user_id) VALUES (?, ?, ?)', [name, portions || 1, user.id]);
         const recipeId = res.lastID;
 
         for (const item of ingredients) {
