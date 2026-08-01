@@ -409,7 +409,9 @@ export default function Home() {
           <div>
             <p className="page-eyebrow animate-fade-up stagger-1">{greeting.time}</p>
             <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
-              <h1 className="page-title animate-fade-up stagger-2" style={{ fontSize: '3rem' }}>{data?.userName || 'My'}<em>'s Kitchen</em></h1>
+              <h1 className="page-title animate-fade-up stagger-2" style={{ fontSize: '3rem', minHeight: '3.6rem' }}>
+                {loading ? null : <>{data?.userName || 'My'}<em>'s Kitchen</em></>}
+              </h1>
             </Link>
             <p className="page-sub animate-fade-up stagger-3" style={{ color: data?.todayMacros?.cals > GOAL ? 'var(--red)' : 'var(--text-dim)' }}>
               {loading ? 'Your personal nutrition & recipe hub.' : greeting.sub}
