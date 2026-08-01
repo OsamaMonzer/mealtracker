@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { openDb } from '../../../lib/db';
 import { createClient } from '../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -20,9 +19,16 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = await openDb();
-    const ingredients = await db.all("SELECT * FROM ingredients WHERE status != 'quick_add' AND (user_id IS NULL OR user_id = ?) ORDER BY name ASC", [user.id]);
-    return NextResponse.json(ingredients);
+    const { data, error } = await supabase
+      .from('ingredients')
+      .select('*')
+      .not('status', 'eq', 'quick_add')
+      .or(`user_id.is.null,user_id.eq.${user.id}`)
+      .order('name', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    
+    return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -32,10 +38,8 @@ function parseServing(serving) {
   if (serving == null) return { label: null, grams: null };
   const s = String(serving).trim();
   if (!s) return { label: null, grams: null };
-  // direct grams like "100" or "100g"
   const gMatch = s.match(/^(\d+(?:\.\d+)?)\s*(g|gr|gram|grams)?$/i);
   if (gMatch) return { label: null, grams: parseFloat(gMatch[1]) };
-  // quantity + unit e.g. "1 egg", "2 slices"
   const qtyMatch = s.match(/^(\d+(?:\.\d+)?)\s*(\w+)\b/i);
   const mapping = { egg: 60, eggs: 60, slice: 30, slices: 30, tbsp: 15, tablespoon: 15, tsp: 5, teaspoon: 5, cup: 240 };
   if (qtyMatch) {
@@ -61,20 +65,32 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Missing required numeric fields or name' }, { status: 400 });
     }
 
-    // parse serving into label and grams when possible
     const parsedServing = parseServing(serving_g);
     const servingLabel = parsedServing.label;
     const servingGrams = parsedServing.grams;
 
-    const db = await openDb();
-    const result = await db.run(`
-      INSERT INTO ingredients 
-      (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams, user_id) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, category || '', brand || '', status || '', calories, protein, numberOrZero(carbs_100g), numberOrZero(fat_100g), optionalNumber(price_kg), notes || '', servingLabel, servingGrams, user.id]
-    );
+    const { data: result, error } = await supabase
+      .from('ingredients')
+      .insert({
+        name,
+        category: category || '',
+        brand: brand || '',
+        status: status || '',
+        calories_100g: calories,
+        protein_100g: protein,
+        carbs_100g: numberOrZero(carbs_100g),
+        fat_100g: numberOrZero(fat_100g),
+        price_kg: optionalNumber(price_kg),
+        notes: notes || '',
+        serving_label: servingLabel,
+        serving_grams: servingGrams,
+        user_id: user.id
+      })
+      .select('id').single();
+      
+    if (error) throw new Error(error.message);
     
-    return NextResponse.json({ id: result.lastID, ...data, serving_label: servingLabel, serving_grams: servingGrams }, { status: 201 });
+    return NextResponse.json({ id: result.id, ...data, serving_label: servingLabel, serving_grams: servingGrams }, { status: 201 });
   } catch (error) {
     console.error("Error inserting ingredient:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

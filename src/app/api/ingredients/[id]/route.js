@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { openDb } from '../../../../lib/db';
 import { createClient } from '../../../../utils/supabase/server';
 
 function numberOrZero(value) {
@@ -38,25 +37,40 @@ export async function PUT(request, { params }) {
     const { name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_g } = data;
     const calories = parseFloat(calories_100g);
     const protein = parseFloat(protein_100g);
+    
     if (!name || !Number.isFinite(calories) || !Number.isFinite(protein)) {
       return NextResponse.json({ error: 'Missing required numeric fields or name' }, { status: 400 });
     }
 
     const parsed = parseServing(serving_g);
-    const servingLabel = parsed.label;
-    const servingGrams = parsed.grams;
 
-    const db = await openDb();
+    // Ensure they own it before updating
+    const { data: existing, error: errEx } = await supabase
+      .from('ingredients')
+      .select('id')
+      .eq('id', params.id)
+      .eq('user_id', user.id)
+      .single();
 
-    // Verify ownership (user_id must match, or ingredient is public with user_id IS NULL — don't allow editing shared ones)
-    const existing = await db.get('SELECT id FROM ingredients WHERE id = ? AND user_id = ?', [params.id, user.id]);
-    if (!existing) return NextResponse.json({ error: 'Not found or not yours' }, { status: 404 });
+    if (errEx || !existing) return NextResponse.json({ error: 'Not found or not yours' }, { status: 404 });
 
-    await db.run(`
-      UPDATE ingredients SET name=?, category=?, brand=?, status=?, calories_100g=?, protein_100g=?, carbs_100g=?, fat_100g=?, price_kg=?, notes=?, serving_label=?, serving_grams=?
-      WHERE id=? AND user_id=?`,
-      [name, category, brand, status, calories, protein, numberOrZero(carbs_100g), numberOrZero(fat_100g), optionalNumber(price_kg), notes, servingLabel, servingGrams, params.id, user.id]
-    );
+    const { error: updErr } = await supabase
+      .from('ingredients')
+      .update({
+        name, category, brand, status,
+        calories_100g: calories,
+        protein_100g: protein,
+        carbs_100g: numberOrZero(carbs_100g),
+        fat_100g: numberOrZero(fat_100g),
+        price_kg: optionalNumber(price_kg),
+        notes,
+        serving_label: parsed.label,
+        serving_grams: parsed.grams
+      })
+      .eq('id', params.id);
+
+    if (updErr) throw new Error(updErr.message);
+
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -69,13 +83,23 @@ export async function DELETE(request, { params }) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = await openDb();
-
     // Only allow deleting own ingredients
-    const existing = await db.get('SELECT id FROM ingredients WHERE id = ? AND user_id = ?', [params.id, user.id]);
-    if (!existing) return NextResponse.json({ error: 'Not found or not yours' }, { status: 404 });
+    const { data: existing, error: errEx } = await supabase
+      .from('ingredients')
+      .select('id')
+      .eq('id', params.id)
+      .eq('user_id', user.id)
+      .single();
 
-    await db.run('DELETE FROM ingredients WHERE id = ? AND user_id = ?', [params.id, user.id]);
+    if (errEx || !existing) return NextResponse.json({ error: 'Not found or not yours' }, { status: 404 });
+
+    const { error: delErr } = await supabase
+      .from('ingredients')
+      .delete()
+      .eq('id', params.id);
+
+    if (delErr) throw new Error(delErr.message);
+
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

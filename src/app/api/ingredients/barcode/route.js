@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { openDb } from '../../../../lib/db';
+import { createClient } from '../../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,16 +22,12 @@ function parseServing(s) {
   return { label: str, grams: null };
 }
 
-// Use v2 — more complete nutriment data, actively maintained
 async function fetchOffProduct(barcode) {
   const fields = 'product_name,generic_name,brands,nutriments,serving_size,categories_tags,code,_id';
   const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${fields}`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'MealTracker/1.0 (personal nutrition app)' },
-  });
+  const res = await fetch(url, { headers: { 'User-Agent': 'MealTracker/1.0 (personal nutrition app)' } });
   if (!res.ok) return null;
   const data = await res.json();
-  // v2 wraps in { product: {...}, status: 1 }
   if (data.status === 0 || !data.product) return null;
   return data.product;
 }
@@ -42,42 +38,30 @@ function toNumber(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-// OFF stores energy_100g in kJ. Always prefer energy-kcal_100g first.
-// Fallback chain: energy-kcal_100g → energy-kcal_serving (scaled) → convert from kJ
 function resolveKcal(nutr, servingGrams) {
-  // Best: explicit kcal per 100g field
   const kcal100 = toNumber(nutr['energy-kcal_100g']);
   if (kcal100 !== null) return Math.round(kcal100);
-
-  // Second: kcal per serving, scaled to 100g
   const kcalServ = toNumber(nutr['energy-kcal_serving']);
-  if (kcalServ !== null && servingGrams) {
-    return Math.round((kcalServ / servingGrams) * 100);
-  }
-
-  // Last resort: kJ per 100g → divide by 4.184
+  if (kcalServ !== null && servingGrams) return Math.round((kcalServ / servingGrams) * 100);
   const kj100 = toNumber(nutr['energy-kj_100g']) ?? toNumber(nutr['energy_100g']);
   if (kj100 !== null) return Math.round(kj100 / 4.184);
-
   return null;
 }
 
 function per100From(val100, valServ, servingGrams) {
   const v100 = toNumber(val100);
-  if (v100 !== null) return Math.round(v100 * 10) / 10; // 1 decimal
+  if (v100 !== null) return Math.round(v100 * 10) / 10; 
   const vServ = toNumber(valServ);
-  if (vServ !== null && servingGrams) {
-    return Math.round((vServ / servingGrams) * 1000) / 10;
-  }
+  if (vServ !== null && servingGrams) return Math.round((vServ / servingGrams) * 1000) / 10;
   return null;
 }
 
 function extractMacros(nutr, servingGrams) {
   return {
     calories: resolveKcal(nutr, servingGrams),
-    protein:  per100From(nutr['proteins_100g']       ?? nutr['protein_100g'],       nutr['proteins_serving']       ?? nutr['protein_serving'],       servingGrams),
-    carbs:    per100From(nutr['carbohydrates_100g'],                                 nutr['carbohydrates_serving'],                                    servingGrams),
-    fat:      per100From(nutr['fat_100g'],                                           nutr['fat_serving'],                                              servingGrams),
+    protein:  per100From(nutr['proteins_100g'] ?? nutr['protein_100g'], nutr['proteins_serving'] ?? nutr['protein_serving'], servingGrams),
+    carbs:    per100From(nutr['carbohydrates_100g'], nutr['carbohydrates_serving'], servingGrams),
+    fat:      per100From(nutr['fat_100g'], nutr['fat_serving'], servingGrams),
   };
 }
 
@@ -106,6 +90,10 @@ function buildRecord(p, barcode, overrideCategory) {
 
 export async function GET(request) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { searchParams } = new URL(request.url);
     const barcode = (searchParams.get('barcode') || '').trim();
     if (!barcode) return NextResponse.json({ error: 'barcode required' }, { status: 400 });
@@ -114,12 +102,16 @@ export async function GET(request) {
     if (!p) return NextResponse.json({ foundLocal: false, off: null });
 
     const offNormalized = buildRecord(p, barcode);
-
-    // Check local DB for matching name
-    const db = await openDb();
-    const localRows = await db.all('SELECT * FROM ingredients WHERE status NOT IN (\'quick_add\',\'single_ingredient\',\'one_off\')');
     const norm = normalizeName(offNormalized.name);
-    const found = localRows.find(r => normalizeName(r.name) === norm);
+
+    // Check local DB for matching name (ignoring quick adds)
+    const { data: localRows } = await supabase
+      .from('ingredients')
+      .select('*')
+      .not('status', 'in', '("quick_add","single_ingredient","one_off")')
+      .or(`user_id.is.null,user_id.eq.${user.id}`);
+      
+    const found = (localRows || []).find(r => normalizeName(r.name) === norm);
 
     return NextResponse.json({ foundLocal: !!found, local: found || null, off: offNormalized });
   } catch (e) {
@@ -130,6 +122,10 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const body = await request.json();
     const barcode = (body.barcode || '').toString().trim();
     if (!barcode) return NextResponse.json({ error: 'barcode required' }, { status: 400 });
@@ -139,25 +135,40 @@ export async function POST(request) {
     if (!p) return NextResponse.json({ created: false, message: 'product not found in OpenFoodFacts' });
 
     const record = buildRecord(p, barcode, body.category);
-
-    const db = await openDb();
-    // Check for existing by normalized name to avoid duplicates
-    const localRows = await db.all('SELECT * FROM ingredients WHERE status NOT IN (\'quick_add\',\'single_ingredient\',\'one_off\')');
     const norm = normalizeName(record.name);
-    const existing = localRows.find(r => normalizeName(r.name) === norm);
+
+    // Check for existing by normalized name to avoid duplicates
+    const { data: localRows } = await supabase
+      .from('ingredients')
+      .select('*')
+      .not('status', 'in', '("quick_add","single_ingredient","one_off")')
+      .or(`user_id.is.null,user_id.eq.${user.id}`);
+      
+    const existing = (localRows || []).find(r => normalizeName(r.name) === norm);
     if (existing) return NextResponse.json({ created: false, message: 'already exists', local: existing });
 
     if (!create) return NextResponse.json({ created: false, preview: record });
 
-    const res = await db.run(
-      `INSERT INTO ingredients (name, category, brand, status, calories_100g, protein_100g, carbs_100g, fat_100g, price_kg, notes, serving_label, serving_grams)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [record.name, record.category, record.brand, 'Raw',
-       record.calories_100g, record.protein_100g, record.carbs_100g, record.fat_100g,
-       null, `Imported from OpenFoodFacts barcode ${barcode}`,
-       record.serving_label, record.serving_grams]
-    );
-    const created = await db.get('SELECT * FROM ingredients WHERE id = ?', [res.lastID]);
+    const { data: created, error } = await supabase
+      .from('ingredients')
+      .insert({
+        name: record.name,
+        category: record.category,
+        brand: record.brand,
+        status: 'Raw',
+        calories_100g: record.calories_100g,
+        protein_100g: record.protein_100g,
+        carbs_100g: record.carbs_100g,
+        fat_100g: record.fat_100g,
+        notes: `Imported from OpenFoodFacts barcode ${barcode}`,
+        serving_label: record.serving_label,
+        serving_grams: record.serving_grams,
+        user_id: user.id
+      })
+      .select().single();
+      
+    if (error) throw new Error(error.message);
+
     return NextResponse.json({ created: true, ingredient: created });
   } catch (e) {
     console.error('barcode POST error', e);

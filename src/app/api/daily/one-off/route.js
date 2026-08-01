@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server';
-import { openDb } from '../../../../lib/db';
 import { createClient } from '../../../../utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-// POST /api/daily/one-off
-// Creates a temporary 'one_off' recipe with custom ingredient weights
-// and logs it for the given date — without touching the saved recipe.
 export async function POST(request) {
   try {
     const supabase = createClient();
@@ -19,38 +15,34 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
     }
 
-    const db = await openDb();
+    const { data: rec, error: recErr } = await supabase
+      .from('recipes')
+      .insert({ name: recipe_name, portions: portions || 1, status: 'one_off', user_id: user.id })
+      .select('id').single();
+      
+    if (recErr) throw new Error(recErr.message);
 
-    await db.exec('BEGIN TRANSACTION');
-    try {
-      // Create a hidden one-off recipe
-      const recRes = await db.run(
-        "INSERT INTO recipes (name, portions, status, user_id) VALUES (?, ?, 'one_off', ?)",
-        [recipe_name, portions || 1, user.id]
-      );
-      const recipeId = recRes.lastID;
+    const mapping = ingredients
+      .filter(ing => ing.ingredient_id && ing.weight_g > 0)
+      .map(ing => ({ recipe_id: rec.id, ingredient_id: ing.ingredient_id, weight_g: parseFloat(ing.weight_g) }));
 
-      // Insert ingredients with the (potentially edited) weights
-      for (const ing of ingredients) {
-        if (!ing.ingredient_id || ing.weight_g <= 0) continue;
-        await db.run(
-          'INSERT INTO recipe_ingredients (recipe_id, ingredient_id, weight_g) VALUES (?, ?, ?)',
-          [recipeId, ing.ingredient_id, ing.weight_g]
-        );
-      }
-
-      // Log it — portions=1 because the recipe itself already encodes the full quantity
-      await db.run(
-        'INSERT INTO daily_logs (date, meal_type, recipe_id, portions_eaten, user_id) VALUES (?, ?, ?, ?, ?)',
-        [date, meal_type || 'Snack', recipeId, portions || 1, user.id]
-      );
-
-      await db.exec('COMMIT');
-      return NextResponse.json({ success: true });
-    } catch (err) {
-      await db.exec('ROLLBACK');
-      throw err;
+    if (mapping.length > 0) {
+      const { error: insErr } = await supabase.from('recipe_ingredients').insert(mapping);
+      if (insErr) throw new Error(insErr.message);
     }
+
+    const { error: logErr } = await supabase
+      .from('daily_logs')
+      .insert({
+        date,
+        meal_type: meal_type || 'Snack',
+        recipe_id: rec.id,
+        portions_eaten: portions || 1,
+        user_id: user.id
+      });
+
+    if (logErr) throw new Error(logErr.message);
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('one-off log error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
