@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Carrot, BookOpen, UtensilsCrossed, Scale, TrendingDown, ChefHat, Flame, Beef, ChevronLeft, ChevronRight, X, Calendar, ImageIcon, RefreshCw, Trash2, Target, Zap, Settings } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, ReferenceLine,
@@ -267,6 +268,7 @@ function GoalsPanel({ goals, onSave, onClose }) {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function Home() {
+  const router = useRouter();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -294,6 +296,10 @@ export default function Home() {
   async function fetchGoals() {
     try {
       const g = await (await fetch('/api/goals')).json();
+      if (g.needsOnboarding) {
+        router.push('/onboarding');
+        return;
+      }
       setGoals(g);
     } catch { /* ignore */ }
   }

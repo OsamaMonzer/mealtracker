@@ -14,7 +14,7 @@ export async function GET() {
 
     const db = await openDb();
     const row = await db.get('SELECT * FROM goals WHERE user_id = ?', [user.id]);
-    return NextResponse.json(row || DEFAULTS);
+    return NextResponse.json(row || { ...DEFAULTS, needsOnboarding: true });
   } catch (e) {
     return NextResponse.json(DEFAULTS);
   }
