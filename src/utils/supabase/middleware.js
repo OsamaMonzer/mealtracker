@@ -35,8 +35,16 @@ export async function updateSession(request) {
 
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/auth')
   const isPublicApi = request.nextUrl.pathname.startsWith('/api/auth') // leave any core endpoint alone if needed
+  
+  let apiKey = request.headers.get('x-api-key')
+  const authHeader = request.headers.get('authorization')
+  if (!apiKey && authHeader && authHeader.startsWith('Bearer ')) {
+    apiKey = authHeader.replace('Bearer ', '')
+  }
+  
+  const hasValidApiKey = apiKey === (process.env.MEALTRACKER_API_KEY || 'mealtracker-shortcut-2024')
 
-  if (!user && !isAuthRoute && !isPublicApi) {
+  if (!user && !isAuthRoute && !isPublicApi && !hasValidApiKey) {
     // Redirect unauthenticated traffic to login page
     const url = request.nextUrl.clone()
     url.pathname = '/login'
