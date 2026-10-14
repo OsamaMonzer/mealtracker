@@ -1,76 +1,38 @@
-# MealTracker MCP Server
+# Meal Tracker MCP
 
-This MCP server gives any compatible AI (Claude Desktop, Cursor, etc.) full read/write access to your MealTracker app.
+The app itself is an MCP server at **`https://<your-domain>/api/mcp`** (Streamable HTTP).
+Most clients can connect to that URL directly — this folder is only a fallback for
+clients that need a local stdio server.
 
-## Tools Available
+Tools: `get_overview` (start here), `log_food`, `log_foods`, `log_meal`, `log_ingredient`,
+`quick_add_calories`, `copy_meals`, `update_log_entry`, `delete_log_entry`, `get_day_summary`,
+`get_range_summary`, `get_goals`, `update_goals`, `log_weight`, `get_weight_history`,
+`search_ingredient`, `list_ingredients`, `add_ingredient`, `update_ingredient`, `scan_barcode`,
+`list_recipes`, `get_recipe`, `create_recipe`, `delete_recipe`.
 
-| Tool | What it does |
-|---|---|
-| `get_today_summary` | Calories eaten, remaining, weekly avg, today's meals |
-| `get_history` | All meals for a specific date |
-| `get_weekly_stats` | Macro averages across last 7 days |
-| `search_ingredient` | Search local DB + OpenFoodFacts |
-| `list_ingredients` | All ingredients in your DB |
-| `list_recipes` | All saved recipes with macros |
-| `log_meal` | Log eating a recipe by ID |
-| `log_ingredient` | Log an ingredient by weight (grams) |
-| `quick_add_calories` | Log calories with just a name + number |
-| `create_recipe` | Create a new recipe with ingredients |
-| `add_ingredient` | Add an ingredient to your DB |
-| `scan_barcode` | Look up a barcode and save to DB |
-| `get_goals` | Get daily nutrition goals |
-| `update_goals` | Update daily nutrition goals |
-| `delete_log_entry` | Delete a meal log entry by ID |
+## Connect directly (recommended)
 
-## Setup
+- **Claude (claude.ai / Desktop → Settings → Connectors → Add custom connector)** or
+  **ChatGPT (Settings → Connectors / developer mode → Create)**:
+  URL `https://<your-domain>/api/mcp?key=<MEALTRACKER_API_KEY>`, authentication: none.
+- **Clients that support headers** (Cursor, etc.): URL `https://<your-domain>/api/mcp`,
+  header `Authorization: Bearer <MEALTRACKER_API_KEY>`.
 
-### 1. Install dependencies
+## Local stdio bridge (fallback)
 
-```bash
-cd mcp-server
-npm install
-```
-
-### 2. Configure Claude Desktop
-
-Open your Claude Desktop config file:
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-
-Add this block inside the `mcpServers` object:
+No `npm install` needed (Node 18+).
 
 ```json
 {
   "mcpServers": {
     "mealtracker": {
       "command": "node",
-      "args": ["/FULL/PATH/TO/mealtracker/mcp-server/index.js"],
+      "args": ["C:/Users/Osama/Meal tracker/mcp-server/index.js"],
       "env": {
-        "MEALTRACKER_URL": "https://your-deployed-app-url.com",
+        "MEALTRACKER_URL": "https://<your-domain>",
         "MEALTRACKER_API_KEY": "<same value as MEALTRACKER_API_KEY on Vercel>"
       }
     }
   }
 }
-```
-
-Replace `/FULL/PATH/TO/mealtracker` with the actual path on your machine.  
-Replace `https://your-deployed-app-url.com` with your real app URL (or `http://localhost:3000` if running locally).
-
-### 3. Restart Claude Desktop
-
-After saving the config, restart Claude Desktop. You should see a 🔧 icon in the chat input — that confirms the MCP server is connected.
-
----
-
-## Example Prompts
-
-```
-"What did I eat today and how many calories do I have left?"
-"Log that I had 200g of chicken breast for lunch"
-"Create a recipe called Protein Bowl with chicken, rice, and broccoli, 150g each, 2 portions"
-"What are my average macros this week?"
-"I just ate a Big Mac, quick add 550 calories as dinner"
-"Update my protein goal to 180g"
-"What ingredients do I have in my database?"
 ```

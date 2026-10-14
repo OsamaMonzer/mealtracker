@@ -2,11 +2,15 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import { readApiKey, isValidApiKey } from '../../lib/apiKey'
 
-const unauthorized = () => NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+const unauthorized = () =>
+  NextResponse.json({ status: 'error', error: 'Unauthorized', message: '❌ Unauthorized — check the API key.' }, { status: 401 })
 
 export async function updateSession(request) {
   const { pathname } = request.nextUrl
   const isApi = pathname.startsWith('/api/')
+
+  // Public: the GPT action schema (contains no data or secrets).
+  if (pathname === '/openapi.json') return NextResponse.next()
 
   // API-key callers: validate here, and pass the key on as a header so route
   // handlers see it even when it arrived as ?key= or a Bearer token.

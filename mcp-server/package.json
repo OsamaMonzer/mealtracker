@@ -1,14 +1,10 @@
 {
   "name": "mealtracker-mcp",
-  "version": "1.0.0",
-  "description": "MCP server giving AI full access to MealTracker",
+  "version": "2.0.0",
+  "description": "Stdio bridge to the Meal Tracker hosted MCP endpoint",
   "type": "module",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "zod": "^3.23.8"
-  }
+  "bin": { "mealtracker-mcp": "index.js" },
+  "engines": { "node": ">=18" },
+  "scripts": { "start": "node index.js" }
 }
