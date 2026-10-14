@@ -132,10 +132,11 @@ const TOOLS = [
   },
 ];
 
+// Middleware has already checked the caller's API key before this route runs.
 async function callTool(toolName, args, origin) {
   const res = await fetch(`${origin}/api/gpt`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.MEALTRACKER_API_KEY || 'mealtracker-shortcut-2024' },
+    headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.MEALTRACKER_API_KEY },
     body: JSON.stringify({ action: toolName, ...args }),
   });
   return res.json();

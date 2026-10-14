@@ -6,10 +6,12 @@
     "version": "1.0.0"
   },
   "servers": [
-    { "url": "https://mealtracker-eosin.vercel.app" }
+    {
+      "url": "https://mealtracker-eosin.vercel.app"
+    }
   ],
   "paths": {
-    "/api/gpt?key=mealtracker-shortcut-2024": {
+    "/api/gpt": {
       "post": {
         "operationId": "mealtracker_action",
         "summary": "Perform any MealTracker action",
@@ -20,7 +22,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["action"],
+                "required": [
+                  "action"
+                ],
                 "properties": {
                   "action": {
                     "type": "string",
@@ -44,42 +48,124 @@
                       "delete_log_entry"
                     ]
                   },
-                  "date": { "type": "string", "description": "Date in YYYY-MM-DD format. Defaults to today." },
-                  "query": { "type": "string", "description": "Search query for search_ingredient." },
-                  "recipe_id": { "type": "integer", "description": "Recipe ID for log_meal." },
-                  "portions_eaten": { "type": "number", "description": "Portions eaten for log_meal." },
-                  "ingredient_id": { "type": "integer", "description": "Ingredient ID for log_ingredient." },
-                  "weight_g": { "type": "number", "description": "Weight in grams. For log_food: total grams to log (e.g. 4 eggs = 240g)." },
-                  "meal_type": { "type": "string", "enum": ["Breakfast","Lunch","Dinner","Snack"] },
-                  "name": { "type": "string", "description": "Food or ingredient name for log_food, quick_add_calories, add_ingredient, or create_recipe." },
-                  "calories": { "type": "number", "description": "Calories for quick_add_calories." },
-                  "calories_100g": { "type": "number", "description": "Calories per 100g. Required for log_food if ingredient is not in DB." },
-                  "protein_100g": { "type": "number" },
-                  "carbs_100g": { "type": "number" },
-                  "fat_100g": { "type": "number" },
-                  "category": { "type": "string", "enum": ["Protein","Carb","Fat","Vegetable","Fruit","Sauce","Dairy","Other"] },
-                  "brand": { "type": "string" },
-                  "serving_label": { "type": "string" },
-                  "serving_grams": { "type": "number" },
-                  "portions": { "type": "number", "description": "Portions for create_recipe." },
+                  "date": {
+                    "type": "string",
+                    "description": "Date in YYYY-MM-DD format. Defaults to today."
+                  },
+                  "query": {
+                    "type": "string",
+                    "description": "Search query for search_ingredient."
+                  },
+                  "recipe_id": {
+                    "type": "integer",
+                    "description": "Recipe ID for log_meal."
+                  },
+                  "portions_eaten": {
+                    "type": "number",
+                    "description": "Portions eaten for log_meal."
+                  },
+                  "ingredient_id": {
+                    "type": "integer",
+                    "description": "Ingredient ID for log_ingredient."
+                  },
+                  "weight_g": {
+                    "type": "number",
+                    "description": "Weight in grams. For log_food: total grams to log (e.g. 4 eggs = 240g)."
+                  },
+                  "meal_type": {
+                    "type": "string",
+                    "enum": [
+                      "Breakfast",
+                      "Lunch",
+                      "Dinner",
+                      "Snack"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Food or ingredient name for log_food, quick_add_calories, add_ingredient, or create_recipe."
+                  },
+                  "calories": {
+                    "type": "number",
+                    "description": "Calories for quick_add_calories."
+                  },
+                  "calories_100g": {
+                    "type": "number",
+                    "description": "Calories per 100g. Required for log_food if ingredient is not in DB."
+                  },
+                  "protein_100g": {
+                    "type": "number"
+                  },
+                  "carbs_100g": {
+                    "type": "number"
+                  },
+                  "fat_100g": {
+                    "type": "number"
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "Protein",
+                      "Carb",
+                      "Fat",
+                      "Vegetable",
+                      "Fruit",
+                      "Sauce",
+                      "Dairy",
+                      "Other"
+                    ]
+                  },
+                  "brand": {
+                    "type": "string"
+                  },
+                  "serving_label": {
+                    "type": "string"
+                  },
+                  "serving_grams": {
+                    "type": "number"
+                  },
+                  "portions": {
+                    "type": "number",
+                    "description": "Portions for create_recipe."
+                  },
                   "ingredients": {
                     "type": "array",
                     "description": "Ingredient list for create_recipe.",
                     "items": {
                       "type": "object",
                       "properties": {
-                        "ingredient_id": { "type": "integer" },
-                        "weight_g": { "type": "number" }
+                        "ingredient_id": {
+                          "type": "integer"
+                        },
+                        "weight_g": {
+                          "type": "number"
+                        }
                       }
                     }
                   },
-                  "barcode": { "type": "string", "description": "Barcode number for scan_barcode." },
-                  "calorie_goal": { "type": "number" },
-                  "protein_goal": { "type": "number" },
-                  "carbs_goal": { "type": "number" },
-                  "fat_goal": { "type": "number" },
-                  "weight_target": { "type": "number" },
-                  "id": { "type": "integer", "description": "Log entry ID for delete_log_entry." }
+                  "barcode": {
+                    "type": "string",
+                    "description": "Barcode number for scan_barcode."
+                  },
+                  "calorie_goal": {
+                    "type": "number"
+                  },
+                  "protein_goal": {
+                    "type": "number"
+                  },
+                  "carbs_goal": {
+                    "type": "number"
+                  },
+                  "fat_goal": {
+                    "type": "number"
+                  },
+                  "weight_target": {
+                    "type": "number"
+                  },
+                  "id": {
+                    "type": "integer",
+                    "description": "Log entry ID for delete_log_entry."
+                  }
                 }
               }
             }
@@ -96,47 +182,87 @@
                       "title": "TodaySummary",
                       "type": "object",
                       "properties": {
-                        "date": { "type": "string" },
+                        "date": {
+                          "type": "string"
+                        },
                         "meals": {
                           "type": "array",
                           "items": {
                             "type": "object",
                             "properties": {
-                              "id": { "type": "integer" },
-                              "meal_type": { "type": "string" },
-                              "name": { "type": "string" },
-                              "calories": { "type": "number" },
-                              "protein": { "type": "number" },
-                              "carbs": { "type": "number" },
-                              "fat": { "type": "number" }
+                              "id": {
+                                "type": "integer"
+                              },
+                              "meal_type": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "calories": {
+                                "type": "number"
+                              },
+                              "protein": {
+                                "type": "number"
+                              },
+                              "carbs": {
+                                "type": "number"
+                              },
+                              "fat": {
+                                "type": "number"
+                              }
                             }
                           }
                         },
                         "totals": {
                           "type": "object",
                           "properties": {
-                            "calories": { "type": "number" },
-                            "protein": { "type": "number" },
-                            "carbs": { "type": "number" },
-                            "fat": { "type": "number" }
+                            "calories": {
+                              "type": "number"
+                            },
+                            "protein": {
+                              "type": "number"
+                            },
+                            "carbs": {
+                              "type": "number"
+                            },
+                            "fat": {
+                              "type": "number"
+                            }
                           }
                         },
                         "goals": {
                           "type": "object",
                           "properties": {
-                            "calories": { "type": "number" },
-                            "protein": { "type": "number" },
-                            "carbs": { "type": "number" },
-                            "fat": { "type": "number" }
+                            "calories": {
+                              "type": "number"
+                            },
+                            "protein": {
+                              "type": "number"
+                            },
+                            "carbs": {
+                              "type": "number"
+                            },
+                            "fat": {
+                              "type": "number"
+                            }
                           }
                         },
                         "remaining": {
                           "type": "object",
                           "properties": {
-                            "calories": { "type": "number" },
-                            "protein": { "type": "number" },
-                            "carbs": { "type": "number" },
-                            "fat": { "type": "number" }
+                            "calories": {
+                              "type": "number"
+                            },
+                            "protein": {
+                              "type": "number"
+                            },
+                            "carbs": {
+                              "type": "number"
+                            },
+                            "fat": {
+                              "type": "number"
+                            }
                           }
                         }
                       }
@@ -145,16 +271,37 @@
                       "title": "LogFoodResult",
                       "type": "object",
                       "properties": {
-                        "success": { "type": "boolean" },
-                        "log_id": { "type": "integer" },
-                        "ingredient_name": { "type": "string" },
-                        "ingredient_id": { "type": "integer" },
-                        "weight_g": { "type": "number" },
-                        "was_in_db": { "type": "boolean", "description": "true if ingredient already existed, false if it was newly added" },
-                        "calories": { "type": "number" },
-                        "protein": { "type": "number" },
-                        "carbs": { "type": "number" },
-                        "fat": { "type": "number" }
+                        "success": {
+                          "type": "boolean"
+                        },
+                        "log_id": {
+                          "type": "integer"
+                        },
+                        "ingredient_name": {
+                          "type": "string"
+                        },
+                        "ingredient_id": {
+                          "type": "integer"
+                        },
+                        "weight_g": {
+                          "type": "number"
+                        },
+                        "was_in_db": {
+                          "type": "boolean",
+                          "description": "true if ingredient already existed, false if it was newly added"
+                        },
+                        "calories": {
+                          "type": "number"
+                        },
+                        "protein": {
+                          "type": "number"
+                        },
+                        "carbs": {
+                          "type": "number"
+                        },
+                        "fat": {
+                          "type": "number"
+                        }
                       }
                     },
                     {
@@ -166,14 +313,30 @@
                           "items": {
                             "type": "object",
                             "properties": {
-                              "id": { "type": "integer" },
-                              "name": { "type": "string" },
-                              "brand": { "type": "string" },
-                              "category": { "type": "string" },
-                              "calories_100g": { "type": "number" },
-                              "protein_100g": { "type": "number" },
-                              "carbs_100g": { "type": "number" },
-                              "fat_100g": { "type": "number" }
+                              "id": {
+                                "type": "integer"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "brand": {
+                                "type": "string"
+                              },
+                              "category": {
+                                "type": "string"
+                              },
+                              "calories_100g": {
+                                "type": "number"
+                              },
+                              "protein_100g": {
+                                "type": "number"
+                              },
+                              "carbs_100g": {
+                                "type": "number"
+                              },
+                              "fat_100g": {
+                                "type": "number"
+                              }
                             }
                           }
                         }
@@ -188,16 +351,30 @@
                           "items": {
                             "type": "object",
                             "properties": {
-                              "id": { "type": "integer" },
-                              "name": { "type": "string" },
-                              "portions": { "type": "number" },
+                              "id": {
+                                "type": "integer"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "portions": {
+                                "type": "number"
+                              },
                               "per_portion": {
                                 "type": "object",
                                 "properties": {
-                                  "calories": { "type": "number" },
-                                  "protein": { "type": "number" },
-                                  "carbs": { "type": "number" },
-                                  "fat": { "type": "number" }
+                                  "calories": {
+                                    "type": "number"
+                                  },
+                                  "protein": {
+                                    "type": "number"
+                                  },
+                                  "carbs": {
+                                    "type": "number"
+                                  },
+                                  "fat": {
+                                    "type": "number"
+                                  }
                                 }
                               }
                             }
@@ -209,11 +386,21 @@
                       "title": "Goals",
                       "type": "object",
                       "properties": {
-                        "calorie_goal": { "type": "number" },
-                        "protein_goal": { "type": "number" },
-                        "carbs_goal": { "type": "number" },
-                        "fat_goal": { "type": "number" },
-                        "weight_target": { "type": "number" }
+                        "calorie_goal": {
+                          "type": "number"
+                        },
+                        "protein_goal": {
+                          "type": "number"
+                        },
+                        "carbs_goal": {
+                          "type": "number"
+                        },
+                        "fat_goal": {
+                          "type": "number"
+                        },
+                        "weight_target": {
+                          "type": "number"
+                        }
                       }
                     },
                     {
@@ -225,22 +412,42 @@
                           "items": {
                             "type": "object",
                             "properties": {
-                              "date": { "type": "string" },
-                              "calories": { "type": "number" },
-                              "protein": { "type": "number" },
-                              "carbs": { "type": "number" },
-                              "fat": { "type": "number" },
-                              "meals": { "type": "integer" }
+                              "date": {
+                                "type": "string"
+                              },
+                              "calories": {
+                                "type": "number"
+                              },
+                              "protein": {
+                                "type": "number"
+                              },
+                              "carbs": {
+                                "type": "number"
+                              },
+                              "fat": {
+                                "type": "number"
+                              },
+                              "meals": {
+                                "type": "integer"
+                              }
                             }
                           }
                         },
                         "averages": {
                           "type": "object",
                           "properties": {
-                            "calories": { "type": "number" },
-                            "protein": { "type": "number" },
-                            "carbs": { "type": "number" },
-                            "fat": { "type": "number" }
+                            "calories": {
+                              "type": "number"
+                            },
+                            "protein": {
+                              "type": "number"
+                            },
+                            "carbs": {
+                              "type": "number"
+                            },
+                            "fat": {
+                              "type": "number"
+                            }
                           }
                         }
                       }
@@ -249,19 +456,33 @@
                       "title": "SuccessResult",
                       "type": "object",
                       "properties": {
-                        "success": { "type": "boolean" },
-                        "log_id": { "type": "integer" },
-                        "calories": { "type": "number" },
-                        "protein": { "type": "number" },
-                        "carbs": { "type": "number" },
-                        "fat": { "type": "number" }
+                        "success": {
+                          "type": "boolean"
+                        },
+                        "log_id": {
+                          "type": "integer"
+                        },
+                        "calories": {
+                          "type": "number"
+                        },
+                        "protein": {
+                          "type": "number"
+                        },
+                        "carbs": {
+                          "type": "number"
+                        },
+                        "fat": {
+                          "type": "number"
+                        }
                       }
                     },
                     {
                       "title": "ErrorResult",
                       "type": "object",
                       "properties": {
-                        "error": { "type": "string" }
+                        "error": {
+                          "type": "string"
+                        }
                       }
                     }
                   ]
@@ -272,5 +493,19 @@
         }
       }
     }
-  }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Your MEALTRACKER_API_KEY"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ]
 }

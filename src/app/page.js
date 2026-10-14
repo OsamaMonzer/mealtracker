@@ -11,17 +11,18 @@ import {
 import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime';
 import { showToast } from '../components/ToastContainer';
 import UserNav from '../components/UserNav';
+import { localDateStr } from '../lib/dates';
 
 // ── Streak calculator ─────────────────────────────────────────────────────
 function calcStreak(allDates) {
   if (!allDates || allDates.length === 0) return 0;
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   const dateSet = new Set(allDates);
   let streak = 0;
   let cursor = new Date();
   if (!dateSet.has(today)) cursor.setDate(cursor.getDate() - 1);
   while (true) {
-    const d = cursor.toISOString().split('T')[0];
+    const d = localDateStr(cursor);
     if (!dateSet.has(d)) break;
     streak++;
     cursor.setDate(cursor.getDate() - 1);
@@ -129,7 +130,7 @@ function DayModal({ date, onClose, GOAL }) {
   }, [date]);
   if (!date) return null;
   const label = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  const isToday = date === new Date().toISOString().split('T')[0];
+  const isToday = date === localDateStr();
   const mealGroups = {};
   (dayData?.logs || []).forEach(log => {
     const mt = log.meal_type || 'Other';
@@ -278,7 +279,7 @@ export default function Home() {
   const [goals, setGoals] = useState({ calorie_goal: 1800, protein_goal: 150, carbs_goal: 200, fat_goal: 60, weight_target: 75 });
   const [goalsChecked, setGoalsChecked] = useState(false);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr();
   const hour = new Date().getHours();
 
   const GOAL = goals.calorie_goal;
@@ -289,7 +290,7 @@ export default function Home() {
 
   async function fetchDashboard() {
     try {
-      setData(await (await fetch('/api/dashboard')).json());
+      setData(await (await fetch(`/api/dashboard?today=${localDateStr()}`)).json());
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }

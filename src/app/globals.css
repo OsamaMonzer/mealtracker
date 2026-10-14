@@ -454,3 +454,8 @@ main {
   max-width: 100%;
   overflow: hidden;
 }
+
+/* iOS zooms into inputs under 16px on focus; keep pinch-zoom but avoid that jump. */
+@media (max-width: 768px) {
+  input, select, textarea, .form-input { font-size: 16px; }
+}

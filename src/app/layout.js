@@ -11,12 +11,12 @@ export const metadata = {
     statusBarStyle: 'default',
     title: "Osama's Kitchen",
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
+};
+
+// Pinch-zoom stays enabled for accessibility. Inputs use 16px+ text, which stops iOS auto-zoom.
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }) {

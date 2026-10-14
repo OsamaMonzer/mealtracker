@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '../../../utils/supabase/server';
+import { isDateStr, todayInTz } from '../../../lib/dates';
+import { withSignedPhotos } from '../../../lib/photos';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request) {
   try {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -74,7 +76,9 @@ export async function GET() {
       dailyHash[date].f += macros.f * portionsPlayed;
     });
 
-    const todayDate = new Date().toISOString().split('T')[0];
+    // The browser sends its own local date; fall back to APP_TIMEZONE.
+    const todayParam = new URL(request.url).searchParams.get('today');
+    const todayDate = isDateStr(todayParam) ? todayParam : todayInTz();
     const todayMacros = dailyHash[todayDate] || { cals: 0, p: 0, c: 0, f: 0 };
 
     // All sorted dates for history navigation
@@ -91,6 +95,8 @@ export async function GET() {
       date: d,
       Calories: Math.round(dailyHash[d].cals),
     }));
+
+    const recentWeights = await withSignedPhotos((weights || []).slice(-14));
 
     const { data: userGoal } = await supabase.from('goals').select('display_name').eq('user_id', user.id).maybeSingle();
     const dbName = userGoal?.display_name;
@@ -110,7 +116,7 @@ export async function GET() {
       weeklyAvgCals: Math.round(weeklyAvgCals),
       chartData,
       allDates,
-      weightLogData: (weights || []).slice(-14).map(w => ({
+      weightLogData: recentWeights.map(w => ({
         name: new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
         Weight: w.weight_kg,
         hasPhoto: !!w.photo_url,

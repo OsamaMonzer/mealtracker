@@ -1,7 +1,3 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['sqlite3', 'sqlite']
-  }
-};
+const nextConfig = {};
 module.exports = nextConfig;

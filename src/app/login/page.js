@@ -66,7 +66,7 @@ export default function LoginPage() {
           </div>
           <div>
             <h1 className="page-title" style={{ fontSize: '2.4rem', marginBottom: '0.2rem' }}>
-              Welcome back
+              {isSignUp ? 'Create account' : 'Welcome back'}
             </h1>
             <p className="page-sub" style={{ margin: '0 auto' }}>
               {isSignUp ? 'Create a secure account to sync your data' : 'Enter your credentials to access your dashboard'}

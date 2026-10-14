@@ -9,8 +9,19 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    // Fetch daily logs and fully nest recipes > recipe_ingredients > ingredients
-    const { data: rawLogs, error } = await supabase
+    // Find the last 15 distinct dates first (cheap), then load only those days in full.
+    const { data: dateRows, error: dateErr } = await supabase
+      .from('daily_logs')
+      .select('date')
+      .eq('user_id', user.id)
+      .order('date', { ascending: false })
+      .limit(1000);
+    if (dateErr) throw new Error(dateErr.message);
+
+    const distinctDates = [...new Set((dateRows || []).map(r => r.date))].slice(0, 15);
+    if (distinctDates.length === 0) return NextResponse.json([]);
+
+    const { data: recentLogs, error } = await supabase
       .from('daily_logs')
       .select(`
         id, date, meal_type, recipe_id, portions_eaten,
@@ -23,18 +34,11 @@ export async function GET() {
         )
       `)
       .eq('user_id', user.id)
+      .in('date', distinctDates)
       .order('date', { ascending: false })
       .order('id', { ascending: false });
 
     if (error) throw new Error(error.message);
-
-    if (!rawLogs || rawLogs.length === 0) return NextResponse.json([]);
-
-    // Find the last 15 distinct dates
-    const distinctDates = [...new Set(rawLogs.map(l => l.date))].slice(0, 15);
-    
-    // Filter out older logs
-    const recentLogs = rawLogs.filter(l => distinctDates.includes(l.date));
 
     const fullLogs = recentLogs.map(log => {
       const rec = log.recipes || {};

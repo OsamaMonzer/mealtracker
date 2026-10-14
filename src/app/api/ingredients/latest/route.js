@@ -6,9 +6,13 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { count, error } = await supabase
       .from('ingredients')
-      .select('*', { count: 'exact', head: true });
+      .select('*', { count: 'exact', head: true })
+      .or(`user_id.is.null,user_id.eq.${user.id}`);
       
     if (error) throw new Error(error.message);
 

@@ -47,7 +47,7 @@ Add this block inside the `mcpServers` object:
       "args": ["/FULL/PATH/TO/mealtracker/mcp-server/index.js"],
       "env": {
         "MEALTRACKER_URL": "https://your-deployed-app-url.com",
-        "MEALTRACKER_API_KEY": "mealtracker-shortcut-2024"
+        "MEALTRACKER_API_KEY": "<same value as MEALTRACKER_API_KEY on Vercel>"
       }
     }
   }

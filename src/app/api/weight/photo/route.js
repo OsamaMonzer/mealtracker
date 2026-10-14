@@ -1,75 +1,55 @@
 import { NextResponse } from 'next/server';
-import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { createClient } from '../../../../utils/supabase/server';
+import { createAdminClient } from '../../../../lib/supabase/admin';
+import { PHOTO_BUCKET, photoPath, ownsPhoto, signPhoto } from '../../../../lib/photos';
 
 export const dynamic = 'force-dynamic';
 
-function getServiceClient() {
-  return createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-}
+const MAX_BYTES = 10 * 1024 * 1024;
+const ALLOWED_EXT = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif']);
 
-// Upload a new photo → returns { url }
+// Upload a new photo → { url } (a short-lived signed URL; the API stores only the path)
 export async function POST(request) {
   try {
-    const authClient = createClient();
-    const { data: { user } } = await authClient.auth.getUser();
+    const { data: { user } } = await createClient().auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const supabase = getServiceClient();
 
     const formData = await request.formData();
     const file = formData.get('file');
-    const date = formData.get('date') || new Date().toISOString().split('T')[0];
+    const date = formData.get('date') || 'photo';
 
-    if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    if (!file || typeof file === 'string') return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    if (file.size > MAX_BYTES) return NextResponse.json({ error: 'Photo is larger than 10 MB' }, { status: 413 });
 
-    const ext = file.name.split('.').pop().toLowerCase() || 'jpg';
-    
-    // Add user_id prefix to isolate files or just use unique paths
-    const path = `weight-photos/${user.id}/${date}-${Date.now()}.${ext}`;
+    let ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!ALLOWED_EXT.has(ext)) ext = 'jpg';
+    const safeDate = String(date).replace(/[^0-9-]/g, '') || 'photo';
+    const path = `weight-photos/${user.id}/${safeDate}-${Date.now()}.${ext}`;
 
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    const { error } = await supabase.storage
-      .from('photos')
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const { error } = await createAdminClient().storage
+      .from(PHOTO_BUCKET)
       .upload(path, buffer, { contentType: file.type || 'image/jpeg', upsert: false });
-
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(path);
-
-    return NextResponse.json({ url: publicUrl });
+    return NextResponse.json({ url: await signPhoto(path), path });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// Delete a photo from storage by URL → { success }
+// Delete a photo by URL or path → { success }
 export async function DELETE(request) {
   try {
-    const authClient = createClient();
-    const { data: { user } } = await authClient.auth.getUser();
+    const { data: { user } } = await createClient().auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const supabase = getServiceClient();
     const { photo_url } = await request.json();
-    if (!photo_url) return NextResponse.json({ error: 'photo_url required' }, { status: 400 });
+    const path = photoPath(photo_url);
+    if (!path) return NextResponse.json({ error: 'Invalid photo' }, { status: 400 });
+    if (!ownsPhoto(path, user.id)) return NextResponse.json({ error: 'Unauthorized to delete this photo' }, { status: 403 });
 
-    const match = photo_url.match(/\/photos\/(.+)$/);
-    if (!match) return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
-    
-    const extractionPath = match[1];
-
-    // Basic ownership validation - URL should contain their user id
-    if (!extractionPath.includes(user.id)) {
-        return NextResponse.json({ error: 'Unauthorized to delete this photo' }, { status: 403 });
-    }
-
-    const { error } = await supabase.storage.from('photos').remove([extractionPath]);
+    const { error } = await createAdminClient().storage.from(PHOTO_BUCKET).remove([path]);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     return NextResponse.json({ success: true });

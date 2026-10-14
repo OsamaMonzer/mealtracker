@@ -5,7 +5,11 @@ import { z } from 'zod';
 // ─── Config ────────────────────────────────────────────────────────────────────
 // Set these via environment variables or edit the defaults below.
 const BASE_URL = process.env.MEALTRACKER_URL || 'http://localhost:3000';
-const API_KEY  = process.env.MEALTRACKER_API_KEY || 'mealtracker-shortcut-2024';
+const API_KEY  = process.env.MEALTRACKER_API_KEY;
+if (!API_KEY) {
+  console.error('MEALTRACKER_API_KEY is not set — add it to the MCP server env config.');
+  process.exit(1);
+}
 
 function headers() {
   return {

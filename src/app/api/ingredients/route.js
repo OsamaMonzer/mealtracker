@@ -1,17 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '../../../utils/supabase/server';
+import { numberOrZero, optionalNumber, parseServing } from '../../../lib/nutrition';
 
 export const dynamic = 'force-dynamic';
-
-function numberOrZero(value) {
-  const parsed = parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function optionalNumber(value) {
-  const parsed = parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
 export async function GET() {
   try {
@@ -32,22 +23,6 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
-
-function parseServing(serving) {
-  if (serving == null) return { label: null, grams: null };
-  const s = String(serving).trim();
-  if (!s) return { label: null, grams: null };
-  const gMatch = s.match(/^(\d+(?:\.\d+)?)\s*(g|gr|gram|grams)?$/i);
-  if (gMatch) return { label: null, grams: parseFloat(gMatch[1]) };
-  const qtyMatch = s.match(/^(\d+(?:\.\d+)?)\s*(\w+)\b/i);
-  const mapping = { egg: 60, eggs: 60, slice: 30, slices: 30, tbsp: 15, tablespoon: 15, tsp: 5, teaspoon: 5, cup: 240 };
-  if (qtyMatch) {
-    const qty = parseFloat(qtyMatch[1]);
-    const unit = qtyMatch[2].toLowerCase();
-    if (mapping[unit]) return { label: s, grams: +(qty * mapping[unit]).toFixed(2) };
-  }
-  return { label: s, grams: null };
 }
 
 export async function POST(request) {

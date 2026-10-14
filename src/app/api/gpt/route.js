@@ -1,44 +1,33 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '../../../utils/supabase/server';
+import { normalizeName, fetchOffProduct, ingredientFromOff, logMacros } from '../../../lib/nutrition';
+import { todayInTz, addDays } from '../../../lib/dates';
 
 export const dynamic = 'force-dynamic';
 
-function today() {
-  return new Date().toISOString().split('T')[0];
-}
+const today = () => todayInTz();
 
-function parseServing(s) {
-  if (!s) return { label: null, grams: null };
-  const str = String(s).trim();
-  const gMatch = str.match(/^(\d+(?:\.\d+)?)\s*(g|gr|gram|grams)$/i);
-  if (gMatch) return { label: null, grams: parseFloat(gMatch[1]) };
-  const mapping = { egg: 60, eggs: 60, slice: 30, slices: 30, tbsp: 15, tablespoon: 15, tsp: 5, teaspoon: 5, cup: 240, ml: 1 };
-  const qtyMatch = str.match(/^(\d+(?:\.\d+)?)\s*(\w+)\b/i);
-  if (qtyMatch) {
-    const qty = parseFloat(qtyMatch[1]);
-    const unit = qtyMatch[2].toLowerCase();
-    if (mapping[unit]) return { label: str, grams: +(qty * mapping[unit]).toFixed(2) };
+const LOG_SELECT = 'id, date, meal_type, recipe_id, portions_eaten, recipes(name, portions, recipe_ingredients(weight_g, ingredients(calories_100g, protein_100g, carbs_100g, fat_100g)))';
+
+function summarizeLogs(logs) {
+  const meals = [];
+  const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  for (const log of logs || []) {
+    const m = logMacros(log);
+    totals.calories += m.calories; totals.protein += m.protein; totals.carbs += m.carbs; totals.fat += m.fat;
+    meals.push({ id: log.id, meal_type: log.meal_type, name: log.recipes?.name, ...m });
   }
-  return { label: str, grams: null };
+  totals.protein = Math.round(totals.protein * 10) / 10;
+  totals.carbs = Math.round(totals.carbs * 10) / 10;
+  totals.fat = Math.round(totals.fat * 10) / 10;
+  return { meals, totals };
 }
 
-function toNum(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
-
-function resolveKcal(nutr, sg) {
-  const k = toNum(nutr['energy-kcal_100g']); if (k !== null) return Math.round(k);
-  const ks = toNum(nutr['energy-kcal_serving']); if (ks !== null && sg) return Math.round((ks / sg) * 100);
-  const kj = toNum(nutr['energy-kj_100g']) ?? toNum(nutr['energy_100g']); if (kj !== null) return Math.round(kj / 4.184);
-  return null;
-}
-
-function p100(v100, vs, sg) {
-  const v = toNum(v100); if (v !== null) return Math.round(v * 10) / 10;
-  const s = toNum(vs); if (s !== null && sg) return Math.round((s / sg) * 1000) / 10;
-  return null;
-}
-
-function normName(n) {
-  return (n || '').toString().trim().toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+async function logsForDate(supabase, userId, date) {
+  const { data, error } = await supabase.from('daily_logs').select(LOG_SELECT)
+    .eq('date', date).eq('user_id', userId).order('id', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
 }
 
 const NOISE_WORDS = new Set([
@@ -50,12 +39,12 @@ const NOISE_WORDS = new Set([
 ]);
 
 function tokenize(str) {
-  return normName(str).split(/\s+/).filter(t => t.length > 1 && !NOISE_WORDS.has(t));
+  return normalizeName(str).split(/\s+/).filter(t => t.length > 1 && !NOISE_WORDS.has(t));
 }
 
 function scoreMatch(queryTokens, candidateName) {
   const candTokens = tokenize(candidateName);
-  const candFull = normName(candidateName);
+  const candFull = normalizeName(candidateName);
   let score = 0;
   for (const qt of queryTokens) {
     if (candTokens.includes(qt)) { score += 10; continue; }
@@ -87,32 +76,12 @@ async function fuzzySearchIngredients(supabase, userId, rawQuery) {
   return scored;
 }
 
-async function fetchOFF(barcode) {
-  const fields = 'product_name,generic_name,brands,nutriments,serving_size,categories_tags,code,_id';
-  const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${fields}`,
-    { headers: { 'User-Agent': 'MealTracker/1.0' } });
-  if (!res.ok) return null;
-  const d = await res.json();
-  return (d.status === 1 && d.product) ? d.product : null;
-}
-
 async function computeMacros(supabase, recipeId, recipePortions, portionsEaten) {
   const { data: ings } = await supabase
     .from('recipe_ingredients')
     .select('weight_g, ingredients(calories_100g, protein_100g, carbs_100g, fat_100g)')
     .eq('recipe_id', recipeId);
-
-  let c = 0, pr = 0, cb = 0, f = 0;
-  (ings || []).forEach(ri => {
-    const i = ri.ingredients || {};
-    const r = ri.weight_g / 100;
-    c += (i.calories_100g || 0) * r;
-    pr += (i.protein_100g || 0) * r;
-    cb += (i.carbs_100g || 0) * r;
-    f += (i.fat_100g || 0) * r;
-  });
-  const pp = portionsEaten / (recipePortions || 1);
-  return { calories: Math.round(c * pp), protein: Math.round(pr * pp * 10) / 10, carbs: Math.round(cb * pp * 10) / 10, fat: Math.round(f * pp * 10) / 10 };
+  return logMacros({ portions_eaten: portionsEaten, recipes: { portions: recipePortions, recipe_ingredients: ings } });
 }
 
 export async function POST(request) {
@@ -127,54 +96,32 @@ export async function POST(request) {
     // ── get_today_summary ────────────────────────────────────────────────
     if (action === 'get_today_summary') {
       const date = p.date || today();
-      const { data: logs } = await supabase
-        .from('daily_logs')
-        .select('id, meal_type, recipe_id, portions_eaten, recipes(name, portions)')
-        .eq('date', date).eq('user_id', user.id).order('id', { ascending: true });
-
-      const meals = [];
-      let tc = 0, tp = 0, tcb = 0, tf = 0;
-      for (const log of (logs || [])) {
-        const m = await computeMacros(supabase, log.recipe_id, log.recipes?.portions, log.portions_eaten);
-        tc += m.calories; tp += m.protein; tcb += m.carbs; tf += m.fat;
-        meals.push({ id: log.id, meal_type: log.meal_type, name: log.recipes?.name, ...m });
-      }
+      const { meals, totals } = summarizeLogs(await logsForDate(supabase, user.id, date));
       const { data: goals } = await supabase.from('goals').select('*').eq('user_id', user.id).maybeSingle();
       const g = goals || { calorie_goal: 1800, protein_goal: 150, carbs_goal: 200, fat_goal: 60 };
-      return NextResponse.json({ date, meals, totals: { calories: tc, protein: tp, carbs: tcb, fat: tf }, goals: { calories: g.calorie_goal, protein: g.protein_goal, carbs: g.carbs_goal, fat: g.fat_goal }, remaining: { calories: Math.max(0, g.calorie_goal - tc), protein: Math.max(0, g.protein_goal - tp), carbs: Math.max(0, g.carbs_goal - tcb), fat: Math.max(0, g.fat_goal - tf) } });
+      return NextResponse.json({ date, meals, totals, goals: { calories: g.calorie_goal, protein: g.protein_goal, carbs: g.carbs_goal, fat: g.fat_goal }, remaining: { calories: Math.max(0, g.calorie_goal - totals.calories), protein: Math.max(0, g.protein_goal - totals.protein), carbs: Math.max(0, g.carbs_goal - totals.carbs), fat: Math.max(0, g.fat_goal - totals.fat) } });
     }
 
     // ── get_history ──────────────────────────────────────────────────────
     if (action === 'get_history') {
       const date = p.date || today();
-      const { data: logs } = await supabase
-        .from('daily_logs')
-        .select('id, meal_type, recipe_id, portions_eaten, recipes(name, portions)')
-        .eq('date', date).eq('user_id', user.id).order('id', { ascending: true });
-
-      const meals = [];
-      let tc = 0, tp = 0, tcb = 0, tf = 0;
-      for (const log of (logs || [])) {
-        const m = await computeMacros(supabase, log.recipe_id, log.recipes?.portions, log.portions_eaten);
-        tc += m.calories; tp += m.protein; tcb += m.carbs; tf += m.fat;
-        meals.push({ id: log.id, meal_type: log.meal_type, name: log.recipes?.name, ...m });
-      }
-      return NextResponse.json({ date, meals, totals: { calories: tc, protein: tp, carbs: tcb, fat: tf } });
+      const { meals, totals } = summarizeLogs(await logsForDate(supabase, user.id, date));
+      return NextResponse.json({ date, meals, totals });
     }
 
     // ── get_weekly_stats ─────────────────────────────────────────────────
     if (action === 'get_weekly_stats') {
+      const end = today();
+      const start = addDays(end, -6);
+      const { data: logs, error } = await supabase.from('daily_logs').select(LOG_SELECT)
+        .eq('user_id', user.id).gte('date', start).lte('date', end);
+      if (error) throw new Error(error.message);
       const days = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(); d.setDate(d.getDate() - i);
-        const date = d.toISOString().split('T')[0];
-        const { data: logs } = await supabase
-          .from('daily_logs')
-          .select('recipe_id, portions_eaten, recipes(portions)')
-          .eq('date', date).eq('user_id', user.id);
-        let c = 0, pr = 0, cb = 0, f = 0;
-        for (const l of (logs || [])) { const m = await computeMacros(supabase, l.recipe_id, l.recipes?.portions, l.portions_eaten); c += m.calories; pr += m.protein; cb += m.carbs; f += m.fat; }
-        days.push({ date, calories: c, protein: pr, carbs: cb, fat: f, meals: (logs || []).length });
+      for (let i = 0; i < 7; i++) {
+        const date = addDays(start, i);
+        const dayLogs = (logs || []).filter(l => l.date === date);
+        const { totals } = summarizeLogs(dayLogs);
+        days.push({ date, ...totals, meals: dayLogs.length });
       }
       const avg = k => Math.round(days.reduce((s, d) => s + d[k], 0) / days.length);
       return NextResponse.json({ days, averages: { calories: avg('calories'), protein: avg('protein'), carbs: avg('carbs'), fat: avg('fat') } });
@@ -246,8 +193,10 @@ export async function POST(request) {
     if (action === 'log_meal') {
       const { recipe_id, portions_eaten, meal_type, date } = p;
       if (!recipe_id || !portions_eaten) return NextResponse.json({ error: 'recipe_id and portions_eaten required' }, { status: 400 });
-      const { data: logRes } = await supabase.from('daily_logs').insert({ date: date || today(), meal_type: meal_type || 'Snack', recipe_id, portions_eaten: parseFloat(portions_eaten), user_id: user.id }).select('id').single();
-      const { data: recipe } = await supabase.from('recipes').select('name, portions').eq('id', recipe_id).single();
+      const { data: recipe } = await supabase.from('recipes').select('name, portions').eq('id', recipe_id).eq('user_id', user.id).maybeSingle();
+      if (!recipe) return NextResponse.json({ error: 'recipe not found' }, { status: 404 });
+      const { data: logRes, error: logErr } = await supabase.from('daily_logs').insert({ date: date || today(), meal_type: meal_type || 'Snack', recipe_id, portions_eaten: parseFloat(portions_eaten), user_id: user.id }).select('id').single();
+      if (logErr) throw new Error(logErr.message);
       const macros = await computeMacros(supabase, recipe_id, recipe.portions, parseFloat(portions_eaten));
       return NextResponse.json({ success: true, log_id: logRes.id, recipe_name: recipe.name, ...macros });
     }
@@ -309,17 +258,15 @@ export async function POST(request) {
     if (action === 'scan_barcode') {
       const barcode = (p.barcode || '').toString().trim();
       if (!barcode) return NextResponse.json({ error: 'barcode required' }, { status: 400 });
-      const product = await fetchOFF(barcode);
+      const product = await fetchOffProduct(barcode);
       if (!product) return NextResponse.json({ status: 'not_found', message: `Barcode ${barcode} not found on OpenFoodFacts.` });
-      const nutr = product.nutriments || {};
-      const serv = parseServing(product.serving_size || '');
-      const name = product.product_name || product.generic_name || product.brands || 'Unknown';
+      const record = ingredientFromOff(product, { barcode, userId: user.id, source: 'GPT' });
       const { data: localRows } = await supabase.from('ingredients').select('*').not('status', 'in', '("quick_add","single_ingredient","one_off")').or(`user_id.is.null,user_id.eq.${user.id}`);
-      const existing = (localRows || []).find(r => normName(r.name) === normName(name));
-      if (existing) return NextResponse.json({ status: 'exists', message: `Already in DB: ${name}`, ingredient: existing });
-      const cals = resolveKcal(nutr, serv.grams) ?? 0;
-      const { data: saved } = await supabase.from('ingredients').insert({ name, category: product.categories_tags?.[0]?.replace(/^en:/, '').replace(/-/g, ' ') || 'Other', brand: product.brands || '', status: 'Raw', calories_100g: cals, protein_100g: p100(nutr['proteins_100g'] ?? nutr['protein_100g'], nutr['proteins_serving'], serv.grams) ?? 0, carbs_100g: p100(nutr['carbohydrates_100g'], nutr['carbohydrates_serving'], serv.grams) ?? 0, fat_100g: p100(nutr['fat_100g'], nutr['fat_serving'], serv.grams) ?? 0, notes: `Scanned via GPT — barcode ${barcode}`, serving_label: serv.label || product.serving_size || null, serving_grams: serv.grams || null, user_id: user.id }).select().single();
-      return NextResponse.json({ status: 'added', message: `Added: ${name} (${cals} kcal/100g)`, ingredient: saved });
+      const existing = (localRows || []).find(r => normalizeName(r.name) === normalizeName(record.name));
+      if (existing) return NextResponse.json({ status: 'exists', message: `Already in DB: ${existing.name}`, ingredient: existing });
+      const { data: saved, error: saveErr } = await supabase.from('ingredients').insert(record).select().single();
+      if (saveErr) throw new Error(saveErr.message);
+      return NextResponse.json({ status: 'added', message: `Added: ${saved.name} (${saved.calories_100g} kcal/100g)`, ingredient: saved });
     }
 
     // ── get_goals ────────────────────────────────────────────────────────

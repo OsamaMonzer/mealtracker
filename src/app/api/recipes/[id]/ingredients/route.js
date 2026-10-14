@@ -14,6 +14,10 @@ export async function GET(request, { params }) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const { data: recipe } = await supabase
+      .from('recipes').select('id').eq('id', id).eq('user_id', user.id).maybeSingle();
+    if (!recipe) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
     const { data, error } = await supabase
       .from('recipe_ingredients')
       .select(`

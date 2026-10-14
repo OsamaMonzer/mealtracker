@@ -9,6 +9,7 @@ import {
 import { showToast } from '../../components/ToastContainer';
 import { useSupabaseRealtime } from '../../hooks/useSupabaseRealtime';
 import UserNav from '../../components/UserNav';
+import { localDateStr } from '../../lib/dates';
 
 const MEAL_ICONS = { Breakfast: Sunrise, Lunch: Sun, Dinner: Moon, Snack: Apple };
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
@@ -129,7 +130,7 @@ export default function DailyTracking() {
 
   const [dayDetails, setDayDetails] = useState({});
   const [form, setForm] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: localDateStr(),
     meal_type: 'Breakfast', recipe_id: '', portions_eaten: '1',
     quick_add_name: '', quick_add_calories: '',
     ingredient_id: '', weight_g: '100'

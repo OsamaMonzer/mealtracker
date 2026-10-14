@@ -1,10 +1,28 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies, headers } from 'next/headers'
+import { createAdminClient } from '../../lib/supabase/admin'
+import { readApiKey, isValidApiKey, API_KEY_USER_ID } from '../../lib/apiKey'
+
+// API-key callers (Shortcut / GPT / MCP) have no Supabase session, so they get a
+// service-role client pinned to API_KEY_USER_ID. Every route already filters by
+// user.id, which keeps them scoped to that one account.
+function apiKeyClient() {
+  let key = null
+  try { key = readApiKey(headers()) } catch { return null }
+  if (!key || !isValidApiKey(key)) return null
+
+  const supabase = createAdminClient()
+  const user = { id: API_KEY_USER_ID, user_metadata: { display_name: 'API' } }
+  supabase.auth.getUser = async () => ({ data: { user }, error: null })
+  return supabase
+}
 
 export function createClient() {
-  const cookieStore = cookies()
+  const viaKey = apiKeyClient()
+  if (viaKey) return viaKey
 
-  const supabase = createServerClient(
+  const cookieStore = cookies()
+  return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
@@ -14,44 +32,12 @@ export function createClient() {
         },
         setAll(cookiesToSet) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
+            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
           } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
+            // Called from a Server Component — middleware refreshes the session instead.
           }
         },
       },
     }
   )
-
-  // Monkey-patch getUser to allow MCP server bypass via x-api-key
-  const originalGetUser = supabase.auth.getUser.bind(supabase.auth)
-  supabase.auth.getUser = async (jwt) => {
-    try {
-      let apiKey = headers().get('x-api-key')
-      const authHeader = headers().get('authorization')
-      if (!apiKey && authHeader && authHeader.startsWith('Bearer ')) {
-        apiKey = authHeader.replace('Bearer ', '')
-      }
-      if (apiKey === (process.env.MEALTRACKER_API_KEY || 'mealtracker-shortcut-2024')) {
-        return { 
-          data: { 
-            user: { 
-              id: '9cc56a4b-9b15-4f91-83e1-42137709fe20', 
-              user_metadata: { display_name: 'Osama (MCP)' } 
-            } 
-          }, 
-          error: null 
-        }
-      }
-    } catch (e) {
-      // Ignore if headers() throws outside of request context
-    }
-    return originalGetUser(jwt)
-  }
-
-  return supabase
 }

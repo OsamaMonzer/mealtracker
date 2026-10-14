@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { createClient } from '../lib/supabase/client';
+import { createClient } from '../utils/supabase/client';
 
 /**
- * Subscribes to Supabase Realtime postgres_changes on the given tables.
- * Calls onChange when any INSERT/UPDATE/DELETE happens (no page refresh needed).
+ * Subscribes to Supabase Realtime postgres_changes on the given tables and calls
+ * onChange on any INSERT/UPDATE/DELETE. Uses the logged-in browser client so
+ * RLS applies and you only get events for your own rows.
  */
 export function useSupabaseRealtime(tables, onChange) {
   const callbackRef = useRef(onChange);
@@ -14,21 +15,17 @@ export function useSupabaseRealtime(tables, onChange) {
   const tableKey = Array.isArray(tables) ? tables.join(',') : '';
 
   useEffect(() => {
+    if (!tableKey || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
     const supabase = createClient();
-    if (!supabase || !tableKey) return;
 
     const channel = supabase.channel(`meal-tracker-${tableKey}`);
-    for (const table of tables) {
-      channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table },
-        () => callbackRef.current()
-      );
+    for (const table of tableKey.split(',')) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => callbackRef.current());
     }
     channel.subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [tableKey, tables]);
+  }, [tableKey]);
 }

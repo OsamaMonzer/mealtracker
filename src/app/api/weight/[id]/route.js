@@ -1,50 +1,28 @@
 import { NextResponse } from 'next/server';
-import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { createClient } from '../../../../utils/supabase/server';
-
-function getServiceClient() {
-  return createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-}
+import { createAdminClient } from '../../../../lib/supabase/admin';
+import { PHOTO_BUCKET, photoPath, ownsPhoto } from '../../../../lib/photos';
 
 export async function DELETE(request, { params }) {
   try {
-    const authClient = createClient();
-    const { data: { user } } = await authClient.auth.getUser();
+    const { data: { user } } = await createClient().auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const supabase = getServiceClient();
-    const id = params.id;
+    const supabase = createAdminClient();
 
-    // Fetch photo_url before deleting (only if owned by user)
     const { data: log } = await supabase
       .from('weight_logs')
       .select('photo_url')
-      .eq('id', id)
+      .eq('id', params.id)
       .eq('user_id', user.id)
-      .single();
-
+      .maybeSingle();
     if (!log) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    // Delete row
-    const { error } = await supabase
-      .from('weight_logs')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', user.id);
-
+    const { error } = await supabase.from('weight_logs').delete().eq('id', params.id).eq('user_id', user.id);
     if (error) throw error;
 
-    // Delete photo from storage if it exists
-    if (log?.photo_url) {
-      const url = log.photo_url;
-      const match = url.match(/\/photos\/(.+)$/);
-      if (match) {
-        await supabase.storage.from('photos').remove([match[1]]);
-      }
-    }
+    const path = photoPath(log.photo_url);
+    if (ownsPhoto(path, user.id)) await supabase.storage.from(PHOTO_BUCKET).remove([path]);
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -54,18 +32,17 @@ export async function DELETE(request, { params }) {
 
 export async function PATCH(request, { params }) {
   try {
-    const authClient = createClient();
-    const { data: { user } } = await authClient.auth.getUser();
+    const { data: { user } } = await createClient().auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const supabase = getServiceClient();
-    const id = params.id;
     const { photo_url } = await request.json();
+    const path = photoPath(photo_url);
+    if (path && !ownsPhoto(path, user.id)) return NextResponse.json({ error: 'Invalid photo' }, { status: 403 });
 
-    const { error } = await supabase
+    const { error } = await createAdminClient()
       .from('weight_logs')
-      .update({ photo_url: photo_url ?? null })
-      .eq('id', id)
+      .update({ photo_url: path })
+      .eq('id', params.id)
       .eq('user_id', user.id);
 
     if (error) throw error;

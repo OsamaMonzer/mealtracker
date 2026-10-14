@@ -1,12 +1,26 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
+import { readApiKey, isValidApiKey } from '../../lib/apiKey'
+
+const unauthorized = () => NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
 export async function updateSession(request) {
-  let supabaseResponse = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
+  const { pathname } = request.nextUrl
+  const isApi = pathname.startsWith('/api/')
+
+  // API-key callers: validate here, and pass the key on as a header so route
+  // handlers see it even when it arrived as ?key= or a Bearer token.
+  if (isApi) {
+    const key = readApiKey(request.headers, request.url)
+    if (key !== null) {
+      if (!isValidApiKey(key)) return unauthorized()
+      const forwarded = new Headers(request.headers)
+      forwarded.set('x-api-key', key)
+      return NextResponse.next({ request: { headers: forwarded } })
+    }
+  }
+
+  let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -17,45 +31,29 @@ export async function updateSession(request) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          supabaseResponse = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
         },
       },
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/auth')
-  const isPublicApi = request.nextUrl.pathname.startsWith('/api/auth') // leave any core endpoint alone if needed
-  
-  let apiKey = request.headers.get('x-api-key')
-  const authHeader = request.headers.get('authorization')
-  if (!apiKey && authHeader && authHeader.startsWith('Bearer ')) {
-    apiKey = authHeader.replace('Bearer ', '')
-  }
-  
-  const hasValidApiKey = apiKey === (process.env.MEALTRACKER_API_KEY || 'mealtracker-shortcut-2024')
+  const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/auth')
 
-  if (!user && !isAuthRoute && !isPublicApi && !hasValidApiKey) {
-    // Redirect unauthenticated traffic to login page
+  if (!user && !isAuthRoute) {
+    if (isApi) return unauthorized()
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
   if (user && isAuthRoute) {
-     // Redirect authenticated traffice away from login page
-     const url = request.nextUrl.clone()
-     url.pathname = '/'
-     return NextResponse.redirect(url)
+    const url = request.nextUrl.clone()
+    url.pathname = '/'
+    return NextResponse.redirect(url)
   }
 
   return supabaseResponse

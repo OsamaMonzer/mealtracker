@@ -6,6 +6,7 @@ import { ArrowLeft, Scale, TrendingDown, TrendingUp, Minus, Trash2, Camera, X, I
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { showToast } from '../../components/ToastContainer';
 import { useSupabaseRealtime } from '../../hooks/useSupabaseRealtime';
+import { localDateStr } from '../../lib/dates';
 
 // ── Weighted Linear Regression Projection ─────────────────────────────────
 // Recent logs (last 28 days) are weighted 3x — makes the projection follow
@@ -217,13 +218,13 @@ export default function WeightTracking() {
   const goalWeight = 75;
 
   const [form, setForm] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: localDateStr(),
     weight_kg: '',
     photoFile: null,
     photoPreview: null,
   });
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr();
   const isFriday = new Date().getDay() === 5;
   const todayLog = logs.find(l => l.date === todayStr);
   const showFridayBanner = isFriday && (!todayLog || !todayLog.photo_url);
@@ -271,7 +272,7 @@ export default function WeightTracking() {
     setUploading(false);
 
     if (res.ok) {
-      setForm({ date: new Date().toISOString().split('T')[0], weight_kg: '', photoFile: null, photoPreview: null });
+      setForm({ date: localDateStr(), weight_kg: '', photoFile: null, photoPreview: null });
       if (fileInputRef.current) fileInputRef.current.value = '';
       fetchLogs();
       showToast(photo_url ? 'Weight + photo logged ✓' : 'Weight logged ✓');

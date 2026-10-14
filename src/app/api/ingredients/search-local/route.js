@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '../../../../utils/supabase/server';
+import { safeFilterText } from '../../../../lib/nutrition';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,13 +11,15 @@ export async function GET(request) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { searchParams } = new URL(request.url);
-    const q = (searchParams.get('q') || '').trim();
+    const q = safeFilterText(searchParams.get('q'));
     if (!q) return NextResponse.json([], { status: 200 });
 
     const { data, error } = await supabase
       .from('ingredients')
       .select('id, name, brand, serving_label, serving_grams, calories_100g, protein_100g, carbs_100g, fat_100g')
+      .or(`user_id.is.null,user_id.eq.${user.id}`)
       .or(`name.ilike.%${q}%,brand.ilike.%${q}%`)
+      .not('status', 'in', '("quick_add","single_ingredient","one_off")')
       .order('name', { ascending: true })
       .limit(50);
 
