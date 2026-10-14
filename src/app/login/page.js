@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '../../utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { ArrowRight, Lock, Mail, UtensilsCrossed, AlertCircle } from 'lucide-react'
@@ -15,6 +15,25 @@ export default function LoginPage() {
   const router = useRouter()
   const supabase = createClient()
 
+  // Errors passed back from /auth/callback (expired or reused email links)
+  useEffect(() => {
+    const msg = new URLSearchParams(window.location.search).get('error')
+    if (msg) setError(msg)
+  }, [])
+
+  async function handleForgotPassword() {
+    setError('')
+    setSuccess('')
+    if (!email) return setError('Enter your email above first, then tap "Forgot password?" again.')
+    setLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+    })
+    setLoading(false)
+    if (error) setError(error.message)
+    else setSuccess('Check your email for a link to set a new password.')
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setLoading(true)
@@ -22,10 +41,14 @@ export default function LoginPage() {
     setSuccess('')
 
     if (isSignUp) {
-      const { error, data } = await supabase.auth.signUp({ email, password })
+      const { error, data } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding` },
+      })
       if (error) setError(error.message)
       else if (data.session == null) {
-         setSuccess('Registration successful! Please check your email to verify your account.')
+         setSuccess('Account created! Check your email and tap the link to confirm — it brings you straight back here to set up your profile.')
       } else {
          router.push('/onboarding')
       }
@@ -134,8 +157,19 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div style={{ textAlign: 'center', marginTop: '-0.5rem' }}>
+        <div style={{ textAlign: 'center', marginTop: '-0.5rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', alignItems: 'center' }}>
+          {!isSignUp && (
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={loading}
+              style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: '0.85rem', cursor: 'pointer' }}
+            >
+              Forgot password?
+            </button>
+          )}
           <button 
+            type="button"
             onClick={() => { setIsSignUp(!isSignUp); setError(''); setSuccess('') }}
             style={{ background: 'none', border: 'none', color: 'var(--text-sub)', fontSize: '0.9rem', cursor: 'pointer', outline: 'none', textDecoration: 'underline' }}
           >

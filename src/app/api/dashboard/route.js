@@ -102,7 +102,7 @@ export async function GET(request) {
     const dbName = userGoal?.display_name;
 
     return NextResponse.json({
-      userName: dbName || user.user_metadata?.display_name || user.user_metadata?.full_name || 'My',
+      userName: dbName || user.user_metadata?.display_name || user.user_metadata?.full_name || null,
       recipesSaved: count,
       startingWeight,
       currentWeight,

@@ -9,8 +9,9 @@ export async function updateSession(request) {
   const { pathname } = request.nextUrl
   const isApi = pathname.startsWith('/api/')
 
-  // Public: the GPT action schema (contains no data or secrets).
+  // Public: the GPT action schema, and the manifest (it falls back to "My Kitchen" when signed out).
   if (pathname === '/openapi.json') return NextResponse.next()
+  if (pathname === '/manifest.json') return NextResponse.next()
 
   // API-key callers: validate here, and pass the key on as a header so route
   // handlers see it even when it arrived as ?key= or a Bearer token.

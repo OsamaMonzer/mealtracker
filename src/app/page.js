@@ -12,6 +12,7 @@ import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime';
 import { showToast } from '../components/ToastContainer';
 import UserNav from '../components/UserNav';
 import { localDateStr } from '../lib/dates';
+import { kitchenParts } from '../lib/kitchenName';
 
 // ── Streak calculator ─────────────────────────────────────────────────────
 function calcStreak(allDates) {
@@ -369,6 +370,7 @@ export default function Home() {
   const displayMacros = selectedDate && !isToday && chartEntry ? { cals: chartEntry.Calories, p: '—', c: '—', f: '—' } : data?.todayMacros;
   const streak = calcStreak(allDates);
   const weightInsights = calcWeightInsights(data?.weightLogData, WEIGHT_TARGET);
+  const kitchen = kitchenParts(data?.userName);
   const greeting = getGreeting(data?.todayMacros, allDates);
 
   function WeightDot({ cx, cy, payload }) {
@@ -411,7 +413,7 @@ export default function Home() {
             <p className="page-eyebrow animate-fade-up stagger-1">{greeting.time}</p>
             <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
               <h1 className="page-title animate-fade-up stagger-2" style={{ fontSize: '3rem', minHeight: '3.6rem' }}>
-                {loading ? null : <>{data?.userName || 'My'}<em>'s Kitchen</em></>}
+                {loading ? null : <>{kitchen.owner}<em>{kitchen.suffix}</em></>}
               </h1>
             </Link>
             <p className="page-sub animate-fade-up stagger-3" style={{ color: data?.todayMacros?.cals > GOAL ? 'var(--red)' : 'var(--text-dim)' }}>
